@@ -1,0 +1,22 @@
+[package]
+name = "nh-api"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+
+[dependencies]
+# HTTP client
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+# Errors
+thiserror = "2.0"
+# Async runtime
+tokio = { version = "1", features = ["macros"] }
+futures = "0.3"
+# Optional: tracing for debug
+tracing = "0.1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros"] }

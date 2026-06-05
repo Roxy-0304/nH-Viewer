@@ -1,0 +1,26 @@
+[package]
+name = "nh-download"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["fs", "sync", "rt", "macros"] }
+# HTTP client (复用 reqwest)
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+# Bytes handling
+bytes = "1.7"
+futures = "0.3"
+# Zip/CBZ creation
+zip = "2.2"
+# Path utils
+path-slash = "0.2"
+thiserror = "2.0"
+tracing = "0.1"
+
+# Internal
+nh-api = { path = "../nh-api" }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros", "rt-multi-thread"] }

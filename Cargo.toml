@@ -1,0 +1,8 @@
+[workspace]
+members = [
+    "crates/nh-api",
+    "crates/nh-bridge",
+    "crates/nh-download",
+    "crates/nh-storage",
+]
+resolver = "2"

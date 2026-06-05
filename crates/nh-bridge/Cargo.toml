@@ -1,0 +1,16 @@
+[package]
+name = "nh-bridge"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+
+[lib]
+crate-type = ["cdylib", "staticlib"]  # 必须输出 C ABI
+
+[dependencies]
+# FFI 类型支持
+libc = "0.2"
+# 内部依赖
+nh-api = { path = "../nh-api" }
+nh-storage = { path = "../nh-storage" }
+nh-download = { path = "../nh-download" }
