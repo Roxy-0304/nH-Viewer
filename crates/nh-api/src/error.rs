@@ -16,10 +16,7 @@ pub enum Error {
 
     /// HTTP error response with status code
     #[error("HTTP error {status}: {body}")]
-    HttpError {
-        status: u16,
-        body: String,
-    },
+    HttpError { status: u16, body: String },
 
     /// Invalid or missing API key
     #[error("Invalid or missing API key")]
@@ -33,57 +30,37 @@ pub enum Error {
 
     /// Invalid page number
     #[error("Invalid page number: {page}")]
-    InvalidPage {
-        page: u32,
-    },
+    InvalidPage { page: u32 },
 
     /// Invalid gallery ID
     #[error("Invalid gallery ID: {id}")]
-    InvalidGalleryId {
-        id: u64,
-    },
+    InvalidGalleryId { id: u64 },
 
     /// Invalid tag ID
     #[error("Invalid tag ID: {id}")]
-    InvalidTagId {
-        id: u64,
-    },
+    InvalidTagId { id: u64 },
 
     /// Invalid media ID
     #[error("Invalid media ID: {media_id}")]
-    InvalidMediaId {
-        media_id: String,
-    },
+    InvalidMediaId { media_id: String },
 
     /// Invalid page index for image
     #[error("Invalid page index: {page} (max: {max})")]
-    InvalidPageNumber {
-        page: u32,
-        max: u32,
-    },
+    InvalidPageNumber { page: u32, max: u32 },
 
     /// Image extension not found
     #[error("Image extension not found for page {page}")]
-    ImageExtensionNotFound {
-        page: u32,
-    },
+    ImageExtensionNotFound { page: u32 },
 
     /// Retry failed after maximum attempts
     #[error("Retry failed after {attempts} attempts")]
-    RetryFailed {
-        attempts: u32,
-    },
+    RetryFailed { attempts: u32 },
 
     /// CDN configuration fetch failed
     #[error("Failed to fetch CDN config: {reason}")]
-    CdnConfigFetch {
-        reason: String,
-    },
+    CdnConfigFetch { reason: String },
 
     /// Invalid server index for CDN
     #[error("Invalid server index: {index}, available: {available}")]
-    InvalidServerIndex {
-        index: usize,
-        available: usize,
-    },
+    InvalidServerIndex { index: usize, available: usize },
 }

@@ -90,7 +90,11 @@ async fn download_zip_file() {
     }
 
     let bytes = bytes.expect("all download attempts failed");
-    assert!(bytes.len() > 1_000_000, "zip file too small: {} bytes", bytes.len());
+    assert!(
+        bytes.len() > 1_000_000,
+        "zip file too small: {} bytes",
+        bytes.len()
+    );
 
     // Save to disk
     let download_dir = "d:/code/nH-Viewer/downloads";

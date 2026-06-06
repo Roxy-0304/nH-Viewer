@@ -178,9 +178,8 @@ pub async fn entries_from_dir(
     }
 
     // Sort by filename numerically (001.jpg, 002.jpg, ...)
-    entries.sort_by(|a, b| {
-        natural_sort_key(&a.archive_name).cmp(&natural_sort_key(&b.archive_name))
-    });
+    entries
+        .sort_by(|a, b| natural_sort_key(&a.archive_name).cmp(&natural_sort_key(&b.archive_name)));
 
     Ok(entries)
 }

@@ -170,7 +170,10 @@ impl DownloadQueue {
                 }
 
                 // If queue is empty, return None (no more tasks)
-                if queue.iter().all(|t| t.is_terminal() || t.state == TaskState::Paused) {
+                if queue
+                    .iter()
+                    .all(|t| t.is_terminal() || t.state == TaskState::Paused)
+                {
                     return None;
                 }
             }

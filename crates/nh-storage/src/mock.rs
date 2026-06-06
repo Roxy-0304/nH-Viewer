@@ -172,11 +172,7 @@ impl GalleryRepository for MockGalleryRepository {
         Ok(())
     }
 
-    async fn record_search(
-        &self,
-        _query: &str,
-        _result_count: u32,
-    ) -> Result<(), RepositoryError> {
+    async fn record_search(&self, _query: &str, _result_count: u32) -> Result<(), RepositoryError> {
         Ok(())
     }
 

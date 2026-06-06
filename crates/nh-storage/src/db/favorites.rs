@@ -23,13 +23,11 @@ pub async fn add(
     cover_path: Option<&str>,
 ) -> Result<i64> {
     // Check for existing entry
-    let count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM favorites WHERE gallery_id = ?1",
-    )
-    .bind(gallery_id)
-    .fetch_one(pool)
-    .await
-    .unwrap_or(0);
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM favorites WHERE gallery_id = ?1")
+        .bind(gallery_id)
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0);
 
     if count > 0 {
         return Err(Error::Duplicate {
@@ -38,14 +36,13 @@ pub async fn add(
         });
     }
 
-    let result = sqlx::query(
-        "INSERT INTO favorites (gallery_id, title, cover_path) VALUES (?1, ?2, ?3)",
-    )
-    .bind(gallery_id)
-    .bind(title)
-    .bind(cover_path)
-    .execute(pool)
-    .await?;
+    let result =
+        sqlx::query("INSERT INTO favorites (gallery_id, title, cover_path) VALUES (?1, ?2, ?3)")
+            .bind(gallery_id)
+            .bind(title)
+            .bind(cover_path)
+            .execute(pool)
+            .await?;
     Ok(result.last_insert_rowid())
 }
 
@@ -83,12 +80,10 @@ pub async fn list(pool: &SqlitePool, limit: u32, offset: u32) -> Result<Vec<Favo
 
 /// Check if a gallery is in favorites
 pub async fn is_favorite(pool: &SqlitePool, gallery_id: i64) -> Result<bool> {
-    let count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM favorites WHERE gallery_id = ?1",
-    )
-    .bind(gallery_id)
-    .fetch_one(pool)
-    .await?;
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM favorites WHERE gallery_id = ?1")
+        .bind(gallery_id)
+        .fetch_one(pool)
+        .await?;
     Ok(count > 0)
 }
 

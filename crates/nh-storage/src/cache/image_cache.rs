@@ -45,13 +45,7 @@ impl ImageCache {
     }
 
     /// Write image bytes into the cache.
-    pub async fn put(
-        &self,
-        gallery_id: u64,
-        page: u32,
-        ext: &str,
-        data: &[u8],
-    ) -> Result<PathBuf> {
+    pub async fn put(&self, gallery_id: u64, page: u32, ext: &str, data: &[u8]) -> Result<PathBuf> {
         let path = self.cache_path(gallery_id, page, ext);
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).await?;

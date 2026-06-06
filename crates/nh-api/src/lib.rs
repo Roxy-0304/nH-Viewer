@@ -11,7 +11,6 @@ pub use endpoints::{DownloadFormat, GalleryEndpoints, Sort, TagSort};
 pub use error::{Error, Result};
 pub use types::{
     CdnConfig, CommentResponse, CoverInfo, DownloadResponse, FavoriteResponse,
-    GalleryDetailResponse, GalleryListItem, GallerySuggestionsBundle, GalleryTitle,
-    ImageFileType, PageInfo, PaginatedResponse, RelatedGalleriesResponse, TagResponse,
-    UserPublic,
+    GalleryDetailResponse, GalleryListItem, GallerySuggestionsBundle, GalleryTitle, ImageFileType,
+    PageInfo, PaginatedResponse, RelatedGalleriesResponse, TagResponse, UserPublic,
 };

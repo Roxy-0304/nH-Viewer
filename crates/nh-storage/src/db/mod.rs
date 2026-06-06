@@ -74,18 +74,20 @@ impl Database {
         // Collect migration files (compiled into the binary)
         let migrations: &[(&str, &str)] = &[
             ("001_init.sql", include_str!("migrations/001_init.sql")),
-            ("002_gallery_cache.sql", include_str!("migrations/002_gallery_cache.sql")),
+            (
+                "002_gallery_cache.sql",
+                include_str!("migrations/002_gallery_cache.sql"),
+            ),
         ];
 
         for (name, sql) in migrations {
-            let already_applied: bool = sqlx::query_scalar::<_, i64>(
-                "SELECT COUNT(*) FROM _migrations WHERE name = ?1",
-            )
-            .bind(name)
-            .fetch_one(&self.pool)
-            .await
-            .map(|count| count > 0)
-            .unwrap_or(false);
+            let already_applied: bool =
+                sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM _migrations WHERE name = ?1")
+                    .bind(name)
+                    .fetch_one(&self.pool)
+                    .await
+                    .map(|count| count > 0)
+                    .unwrap_or(false);
 
             if already_applied {
                 debug!("Migration {} already applied, skipping", name);

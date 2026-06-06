@@ -51,9 +51,7 @@ impl WorkerPool {
             if let Some(p) = proxy {
                 builder = builder.proxy(p);
             }
-            let client = builder
-                .build()
-                .expect("failed to build worker HTTP client");
+            let client = builder.build().expect("failed to build worker HTTP client");
 
             let downloader = ChunkDownloader::new(client);
             let cdn = cdn_config.clone();
@@ -106,15 +104,15 @@ impl WorkerPool {
                         .join(format!("{}.{}", task.page, task.ext));
 
                     // Build the download URL from CDN config + path stored in task
-                    let url = format!(
-                        "{}{}",
-                        cdn.image_server(task.server_index),
-                        task.path
-                    );
+                    let url = format!("{}{}", cdn.image_server(task.server_index), task.path);
 
                     // Check if file already exists (cache hit)
                     if dest_path.exists() {
-                        debug!(worker_id, task_id = task.id, "file already exists, skipping");
+                        debug!(
+                            worker_id,
+                            task_id = task.id,
+                            "file already exists, skipping"
+                        );
                         q.complete(task.id).await;
                         reporter.on_complete(task.id);
                         continue;
@@ -122,14 +120,12 @@ impl WorkerPool {
 
                     // Perform the download
                     let reporter_ref: &dyn crate::progress::ProgressReporter = &*reporter;
-                    match downloader.download(&url, &dest_path, reporter_ref, task.id).await {
+                    match downloader
+                        .download(&url, &dest_path, reporter_ref, task.id)
+                        .await
+                    {
                         Ok(bytes) => {
-                            debug!(
-                                worker_id,
-                                task_id = task.id,
-                                bytes,
-                                "download succeeded"
-                            );
+                            debug!(worker_id, task_id = task.id, bytes, "download succeeded");
                             q.complete(task.id).await;
                         }
                         Err(e) => {

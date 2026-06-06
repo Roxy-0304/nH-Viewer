@@ -38,11 +38,7 @@ pub trait GalleryRepository: Send + Sync {
     async fn save_gallery(&self, gallery: &CachedGallery) -> Result<(), RepositoryError>;
 
     /// Record a search query in history.
-    async fn record_search(
-        &self,
-        query: &str,
-        result_count: u32,
-    ) -> Result<(), RepositoryError>;
+    async fn record_search(&self, query: &str, result_count: u32) -> Result<(), RepositoryError>;
 
     /// List recent search history.
     async fn list_search_history(

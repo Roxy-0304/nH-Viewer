@@ -44,18 +44,20 @@ impl ProxyMode {
                 Ok(Some(reqwest::Proxy::custom(|url| {
                     // Return None to fall back to no proxy if no env var is set
                     let var = if url.scheme() == "https" {
-                        std::env::var("HTTPS_PROXY")
-                            .or_else(|_| std::env::var("https_proxy"))
+                        std::env::var("HTTPS_PROXY").or_else(|_| std::env::var("https_proxy"))
                     } else {
-                        std::env::var("HTTP_PROXY")
-                            .or_else(|_| std::env::var("http_proxy"))
+                        std::env::var("HTTP_PROXY").or_else(|_| std::env::var("http_proxy"))
                     };
-                    var.ok().or_else(|| std::env::var("ALL_PROXY").or_else(|_| std::env::var("all_proxy")).ok())
+                    var.ok().or_else(|| {
+                        std::env::var("ALL_PROXY")
+                            .or_else(|_| std::env::var("all_proxy"))
+                            .ok()
+                    })
                 })))
             }
             ProxyMode::Custom(url) => {
-                let proxy = reqwest::Proxy::all(url)
-                    .map_err(|e| crate::error::Error::CdnConfigFetch {
+                let proxy =
+                    reqwest::Proxy::all(url).map_err(|e| crate::error::Error::CdnConfigFetch {
                         reason: format!("invalid proxy URL: {e}"),
                     })?;
                 Ok(Some(proxy))
@@ -208,8 +210,7 @@ impl NhClient {
     /// fetch CDN configuration from `/api/v2/cdn`. If the fetch fails,
     /// a default fallback configuration is used.
     pub async fn new(config: ClientConfig) -> Result<Self> {
-        let mut builder = Client::builder()
-            .timeout(config.timeout);
+        let mut builder = Client::builder().timeout(config.timeout);
 
         // Proxy
         if let Some(proxy) = config.proxy_mode.to_reqwest_proxy()? {
@@ -223,15 +224,16 @@ impl NhClient {
 
         let headers = Self::build_headers(&config)?;
 
-        let client = builder
-            .default_headers(headers)
-            .build()?;
+        let client = builder.default_headers(headers).build()?;
 
         let cdn_config = if config.enable_dynamic_cdn {
             match Self::fetch_cdn_config_inner(&client, &config).await {
                 Ok(cdn) => {
-                    debug!("CDN config fetched successfully: {} image servers, {} thumb servers",
-                        cdn.image_servers.len(), cdn.thumb_servers.len());
+                    debug!(
+                        "CDN config fetched successfully: {} image servers, {} thumb servers",
+                        cdn.image_servers.len(),
+                        cdn.thumb_servers.len()
+                    );
                     Arc::new(cdn)
                 }
                 Err(e) => {
@@ -265,7 +267,11 @@ impl NhClient {
     pub fn new_static(config: ClientConfig) -> Self {
         let mut builder = Client::builder().timeout(config.timeout);
 
-        if let Some(proxy) = config.proxy_mode.to_reqwest_proxy().expect("Invalid proxy config") {
+        if let Some(proxy) = config
+            .proxy_mode
+            .to_reqwest_proxy()
+            .expect("Invalid proxy config")
+        {
             builder = builder.proxy(proxy);
         }
 
@@ -350,7 +356,12 @@ impl NhClient {
     /// Execute a request with retry logic.
     ///
     /// Handles exponential backoff, rate limiting, and error responses uniformly.
-    async fn request_with_retry<F, Fut>(&self, method: &str, url: &str, make_request: F) -> Result<Response>
+    async fn request_with_retry<F, Fut>(
+        &self,
+        method: &str,
+        url: &str,
+        make_request: F,
+    ) -> Result<Response>
     where
         F: Fn(&Client, &str) -> Fut,
         Fut: std::future::Future<Output = std::result::Result<Response, reqwest::Error>>,
@@ -379,12 +390,14 @@ impl NhClient {
                                 .and_then(|v| v.parse::<u64>().ok())
                                 .map(Duration::from_secs);
 
-                            warn!("Rate limited on {} request, retry after {:?}", method, retry_after);
+                            warn!(
+                                "Rate limited on {} request, retry after {:?}",
+                                method, retry_after
+                            );
 
                             if attempt < self.config.max_retries {
-                                let delay = retry_after.unwrap_or(
-                                    self.config.retry_delay * 2u32.pow(attempt),
-                                );
+                                let delay = retry_after
+                                    .unwrap_or(self.config.retry_delay * 2u32.pow(attempt));
                                 tokio::time::sleep(delay).await;
                                 continue;
                             }
@@ -416,17 +429,20 @@ impl NhClient {
 
     /// Execute a GET request with retry logic
     async fn get(&self, url: &str) -> Result<Response> {
-        self.request_with_retry("GET", url, |client, url| client.get(url).send()).await
+        self.request_with_retry("GET", url, |client, url| client.get(url).send())
+            .await
     }
 
     /// Execute a POST request with retry logic
     async fn post(&self, url: &str) -> Result<Response> {
-        self.request_with_retry("POST", url, |client, url| client.post(url).send()).await
+        self.request_with_retry("POST", url, |client, url| client.post(url).send())
+            .await
     }
 
     /// Execute a DELETE request with retry logic
     async fn delete(&self, url: &str) -> Result<Response> {
-        self.request_with_retry("DELETE", url, |client, url| client.delete(url).send()).await
+        self.request_with_retry("DELETE", url, |client, url| client.delete(url).send())
+            .await
     }
 
     /// Percent-encode a query string for safe URL usage
@@ -469,7 +485,11 @@ impl GalleryEndpoints for NhClient {
     ) -> Result<PaginatedResponse<GalleryListItem>> {
         let url = format!(
             "{}/api/v2/galleries/tagged?tag_id={}&sort={}&page={}&per_page={}",
-            self.config.base_url, tag_id, sort.as_str(), page, per_page
+            self.config.base_url,
+            tag_id,
+            sort.as_str(),
+            page,
+            per_page
         );
         debug!("Fetching tagged galleries: {}", url);
 
@@ -529,7 +549,10 @@ impl GalleryEndpoints for NhClient {
         let encoded = Self::encode_query(query);
         let url = format!(
             "{}/api/v2/search?query={}&sort={}&page={}",
-            self.config.base_url, encoded, sort.as_str(), page
+            self.config.base_url,
+            encoded,
+            sort.as_str(),
+            page
         );
         debug!("Searching galleries: {}", url);
 
@@ -541,7 +564,9 @@ impl GalleryEndpoints for NhClient {
     async fn download_gallery(&self, id: u64, format: DownloadFormat) -> Result<DownloadResponse> {
         let url = format!(
             "{}/api/v2/galleries/{}/download?format={}",
-            self.config.base_url, id, format.as_str()
+            self.config.base_url,
+            id,
+            format.as_str()
         );
         debug!("Requesting download URL: {}", url);
 
@@ -577,7 +602,11 @@ impl GalleryEndpoints for NhClient {
     ) -> Result<PaginatedResponse<TagResponse>> {
         let url = format!(
             "{}/api/v2/tags/{}?sort={}&page={}&per_page={}",
-            self.config.base_url, tag_type, sort.as_str(), page, per_page
+            self.config.base_url,
+            tag_type,
+            sort.as_str(),
+            page,
+            per_page
         );
         debug!("Fetching tags by type: {}", url);
 

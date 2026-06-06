@@ -1,7 +1,7 @@
 use crate::error::Result;
 use crate::types::{
-    DownloadResponse, FavoriteResponse, GalleryDetailResponse, GalleryListItem,
-    PaginatedResponse, RelatedGalleriesResponse, TagResponse,
+    DownloadResponse, FavoriteResponse, GalleryDetailResponse, GalleryListItem, PaginatedResponse,
+    RelatedGalleriesResponse, TagResponse,
 };
 
 /// Sort order for gallery listings and search.
@@ -91,9 +91,7 @@ pub trait GalleryEndpoints {
 
     /// Get a random gallery ID.
     /// `GET /api/v2/galleries/random`
-    fn get_random_gallery(
-        &self,
-    ) -> impl std::future::Future<Output = Result<u64>> + Send;
+    fn get_random_gallery(&self) -> impl std::future::Future<Output = Result<u64>> + Send;
 
     /// Get a single gallery with full details and optional includes.
     /// `GET /api/v2/galleries/{gallery_id}`

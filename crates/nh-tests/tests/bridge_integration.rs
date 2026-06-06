@@ -36,7 +36,9 @@ async fn bridge_init_and_fetch_gallery() {
     let settings = test_settings();
     settings.ensure_dirs().await.expect("failed to create dirs");
 
-    let storage = Storage::init(settings).await.expect("failed to init storage");
+    let storage = Storage::init(settings)
+        .await
+        .expect("failed to init storage");
 
     let config = test_client_config();
     gallery::init_bridge_with_config(storage, config).await;
@@ -51,7 +53,11 @@ async fn bridge_init_and_fetch_gallery() {
         .expect("failed to get gallery");
     assert_gallery_info_valid(&info);
     assert_eq!(info.id, TEST_GALLERY_ID);
-    println!("Gallery: {} ({})", info.title_en.unwrap_or_default(), info.id);
+    println!(
+        "Gallery: {} ({})",
+        info.title_en.unwrap_or_default(),
+        info.id
+    );
 }
 
 #[tokio::test]
@@ -59,7 +65,9 @@ async fn bridge_search() {
     let settings = test_settings();
     settings.ensure_dirs().await.expect("failed to create dirs");
 
-    let storage = Storage::init(settings).await.expect("failed to init storage");
+    let storage = Storage::init(settings)
+        .await
+        .expect("failed to init storage");
 
     let config = test_client_config();
     gallery::init_bridge_with_config(storage, config).await;
@@ -78,14 +86,14 @@ async fn bridge_popular() {
     let settings = test_settings();
     settings.ensure_dirs().await.expect("failed to create dirs");
 
-    let storage = Storage::init(settings).await.expect("failed to init storage");
+    let storage = Storage::init(settings)
+        .await
+        .expect("failed to init storage");
 
     let config = test_client_config();
     gallery::init_bridge_with_config(storage, config).await;
 
-    let results = gallery::nh_get_popular()
-        .await
-        .expect("popular failed");
+    let results = gallery::nh_get_popular().await.expect("popular failed");
     assert!(!results.is_empty(), "popular should return results");
 }
 
@@ -94,13 +102,13 @@ async fn bridge_random() {
     let settings = test_settings();
     settings.ensure_dirs().await.expect("failed to create dirs");
 
-    let storage = Storage::init(settings).await.expect("failed to init storage");
+    let storage = Storage::init(settings)
+        .await
+        .expect("failed to init storage");
 
     let config = test_client_config();
     gallery::init_bridge_with_config(storage, config).await;
 
-    let id = gallery::nh_get_random()
-        .await
-        .expect("random failed");
+    let id = gallery::nh_get_random().await.expect("random failed");
     assert!(id > 0, "random gallery id should be > 0");
 }

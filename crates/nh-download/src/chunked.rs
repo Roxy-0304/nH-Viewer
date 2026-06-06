@@ -153,12 +153,10 @@ impl ChunkDownloader {
             let chunk_data = self
                 .download_chunk(url, range_start, range_end)
                 .await
-                .map_err(|e| {
-                    Error::ChunkFailed {
-                        url: url.to_string(),
-                        retries: self.max_retries,
-                        reason: e.to_string(),
-                    }
+                .map_err(|e| Error::ChunkFailed {
+                    url: url.to_string(),
+                    retries: self.max_retries,
+                    reason: e.to_string(),
                 })?;
 
             file.write_all(&chunk_data).await?;
@@ -191,12 +189,7 @@ impl ChunkDownloader {
     }
 
     /// Download a single chunk [range_start, range_end] with exponential backoff retries.
-    async fn download_chunk(
-        &self,
-        url: &str,
-        range_start: u64,
-        range_end: u64,
-    ) -> Result<Vec<u8>> {
+    async fn download_chunk(&self, url: &str, range_start: u64, range_end: u64) -> Result<Vec<u8>> {
         let range_header = format!("bytes={}-{}", range_start, range_end);
 
         for attempt in 0..=self.max_retries {
@@ -204,7 +197,11 @@ impl ChunkDownloader {
                 let delay = BASE_DELAY * 2u32.pow(attempt - 1);
                 warn!(
                     attempt,
-                    url, range_start, range_end, ?delay, "retrying chunk download"
+                    url,
+                    range_start,
+                    range_end,
+                    ?delay,
+                    "retrying chunk download"
                 );
                 tokio::time::sleep(delay).await;
             }

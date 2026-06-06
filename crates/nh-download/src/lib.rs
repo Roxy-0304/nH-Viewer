@@ -204,7 +204,11 @@ impl DownloadManager {
         // ---- Step 1: Cache-first gallery fetch ----
         let pool = self.storage.db().pool();
 
-        let gallery: nh_api::GalleryDetailResponse = match gallery_cache::get_gallery_raw(pool, gallery_id).await? {
+        let gallery: nh_api::GalleryDetailResponse = match gallery_cache::get_gallery_raw(
+            pool, gallery_id,
+        )
+        .await?
+        {
             Some(ref raw) if !raw.is_empty() => {
                 match serde_json::from_str::<nh_api::GalleryDetailResponse>(raw) {
                     Ok(g) => {
@@ -249,9 +253,7 @@ impl DownloadManager {
         for page in 1..=gallery.num_pages {
             let page_info = gallery.pages.get((page - 1) as usize);
             let ext = page_info
-                .map(|p| {
-                    p.path.rsplit('.').next().unwrap_or("jpg").to_string()
-                })
+                .map(|p| p.path.rsplit('.').next().unwrap_or("jpg").to_string())
                 .unwrap_or_else(|| "jpg".to_string());
 
             let path = page_info
@@ -309,7 +311,15 @@ impl DownloadManager {
         path: String,
     ) -> Result<()> {
         self.queue
-            .add_task(gallery_id, media_id, page, ext, priority, server_index, path)
+            .add_task(
+                gallery_id,
+                media_id,
+                page,
+                ext,
+                priority,
+                server_index,
+                path,
+            )
             .await;
 
         self.persist_queue().await?;
@@ -412,10 +422,7 @@ impl DownloadManager {
 
     /// Restore queue state from disk.
     async fn restore_queue(queue: &DownloadQueue, storage: &nh_storage::Storage) -> Result<()> {
-        let persist_path = storage
-            .settings()
-            .image_cache_dir
-            .join(".queue_state.json");
+        let persist_path = storage.settings().image_cache_dir.join(".queue_state.json");
         if persist_path.exists() {
             let json = tokio::fs::read_to_string(&persist_path).await?;
             queue.from_json(&json).await?;

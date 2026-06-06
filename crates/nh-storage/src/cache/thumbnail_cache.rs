@@ -131,7 +131,8 @@ impl ThumbnailCache {
     /// Scan the cache directory and return all cached files sorted by access time (oldest first).
     async fn scan_entries(&self) -> Result<Vec<CacheEntry>> {
         let mut entries = Vec::new();
-        self.scan_dir_recursive(&self.base_dir, &mut entries).await?;
+        self.scan_dir_recursive(&self.base_dir, &mut entries)
+            .await?;
         // Sort by accessed_at ascending (oldest = least recently used first)
         entries.sort_by_key(|e| e.accessed_at);
         Ok(entries)

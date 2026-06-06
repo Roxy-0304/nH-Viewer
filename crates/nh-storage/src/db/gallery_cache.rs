@@ -95,19 +95,35 @@ pub async fn upsert_gallery_full(pool: &SqlitePool, g: &CachedGallery) -> crate:
 ///
 /// Returns `None` if no gallery with the given id is cached.
 pub async fn get_gallery_raw(pool: &SqlitePool, id: u64) -> anyhow::Result<Option<String>> {
-    let row: Option<(String,)> = sqlx::query_as(
-        "SELECT raw_json FROM galleries WHERE id = ?1",
-    )
-    .bind(id as i64)
-    .fetch_optional(pool)
-    .await?;
+    let row: Option<(String,)> = sqlx::query_as("SELECT raw_json FROM galleries WHERE id = ?1")
+        .bind(id as i64)
+        .fetch_optional(pool)
+        .await?;
 
     Ok(row.map(|(raw_json,)| raw_json))
 }
 
 /// Get a cached gallery by id (full metadata).
-pub async fn get_gallery(pool: &SqlitePool, id: u64) -> crate::error::Result<Option<CachedGallery>> {
-    let row = sqlx::query_as::<_, (i64, String, Option<String>, Option<String>, Option<String>, i64, i64, Option<String>, Option<String>, Option<String>, i64)>(
+pub async fn get_gallery(
+    pool: &SqlitePool,
+    id: u64,
+) -> crate::error::Result<Option<CachedGallery>> {
+    let row = sqlx::query_as::<
+        _,
+        (
+            i64,
+            String,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            i64,
+            i64,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            i64,
+        ),
+    >(
         "SELECT id, media_id, title_en, title_jp, title_pretty,
                 num_pages, num_favorites, cover_ext, tags_json, raw_json, cached_at
          FROM galleries WHERE id = ?1",

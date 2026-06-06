@@ -160,7 +160,8 @@ impl GalleryRepository for Storage {
     async fn list_search_history(
         &self,
         limit: u32,
-    ) -> std::result::Result<Vec<crate::db::gallery_cache::SearchHistoryItem>, RepositoryError> {
+    ) -> std::result::Result<Vec<crate::db::gallery_cache::SearchHistoryItem>, RepositoryError>
+    {
         let pool = self.db.pool();
         crate::db::gallery_cache::list_search_history(pool, limit)
             .await

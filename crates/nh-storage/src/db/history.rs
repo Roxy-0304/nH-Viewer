@@ -93,9 +93,7 @@ pub async fn delete(pool: &SqlitePool, id: i64) -> Result<bool> {
 
 /// Clear all history
 pub async fn clear(pool: &SqlitePool) -> Result<usize> {
-    let result = sqlx::query("DELETE FROM history")
-        .execute(pool)
-        .await?;
+    let result = sqlx::query("DELETE FROM history").execute(pool).await?;
     Ok(result.rows_affected() as usize)
 }
 
