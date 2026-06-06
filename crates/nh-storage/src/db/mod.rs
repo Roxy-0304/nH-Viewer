@@ -1,4 +1,5 @@
 pub mod favorites;
+pub mod gallery_cache;
 pub mod history;
 
 use std::path::Path;
@@ -65,6 +66,7 @@ impl Database {
         // Collect migration files (compiled into the binary)
         let migrations: &[(&str, &str)] = &[
             ("001_init.sql", include_str!("migrations/001_init.sql")),
+            ("002_gallery_cache.sql", include_str!("migrations/002_gallery_cache.sql")),
         ];
 
         for (name, sql) in migrations {

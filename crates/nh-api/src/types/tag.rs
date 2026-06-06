@@ -1,7 +1,7 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// Type of tag in nhentai
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TagType {
     Artist,
@@ -28,7 +28,7 @@ impl std::fmt::Display for TagType {
 }
 
 /// A tag associated with a gallery
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Tag {
     pub id: u64,
     pub name: String,

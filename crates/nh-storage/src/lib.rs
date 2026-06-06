@@ -25,6 +25,8 @@
 pub mod cache;
 pub mod db;
 pub mod error;
+pub mod mock;
+pub mod repository;
 pub mod settings;
 
 use tracing::info;
@@ -32,6 +34,7 @@ use tracing::info;
 use crate::cache::CacheManager;
 use crate::db::Database;
 use crate::error::Result;
+use crate::repository::{GalleryRepository, RepositoryError};
 use crate::settings::Settings;
 
 /// Top-level storage handle combining database, caches, and settings.
@@ -101,5 +104,72 @@ impl Storage {
         self.settings = new_settings;
         self.settings.save_default().await?;
         Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// GalleryRepository implementation for Storage
+// ---------------------------------------------------------------------------
+
+#[async_trait::async_trait]
+impl GalleryRepository for Storage {
+    async fn get_gallery(
+        &self,
+        id: u64,
+    ) -> std::result::Result<Option<crate::db::gallery_cache::CachedGallery>, RepositoryError> {
+        self.db
+            .with_conn(|conn| crate::db::gallery_cache::get_gallery(conn, id))
+            .map_err(RepositoryError::from)
+    }
+
+    async fn search_galleries(
+        &self,
+        query: &str,
+        page: u32,
+    ) -> std::result::Result<Vec<crate::db::gallery_cache::GalleryPreview>, RepositoryError> {
+        let limit = 25u32;
+        let offset = (page.saturating_sub(1)) * limit;
+        self.db
+            .with_conn(|conn| {
+                crate::db::gallery_cache::search_galleries(conn, query, limit, offset)
+            })
+            .map_err(RepositoryError::from)
+    }
+
+    async fn save_gallery(
+        &self,
+        gallery: &crate::db::gallery_cache::CachedGallery,
+    ) -> std::result::Result<(), RepositoryError> {
+        self.db
+            .with_conn(|conn| crate::db::gallery_cache::upsert_gallery(conn, gallery))
+            .map_err(RepositoryError::from)
+    }
+
+    async fn record_search(
+        &self,
+        query: &str,
+        result_count: u32,
+    ) -> std::result::Result<(), RepositoryError> {
+        self.db
+            .with_conn(|conn| {
+                crate::db::gallery_cache::record_search(conn, query, result_count)?;
+                Ok(())
+            })
+            .map_err(RepositoryError::from)
+    }
+
+    async fn list_search_history(
+        &self,
+        limit: u32,
+    ) -> std::result::Result<Vec<crate::db::gallery_cache::SearchHistoryItem>, RepositoryError> {
+        self.db
+            .with_conn(|conn| crate::db::gallery_cache::list_search_history(conn, limit))
+            .map_err(RepositoryError::from)
+    }
+
+    async fn delete_gallery(&self, id: u64) -> std::result::Result<bool, RepositoryError> {
+        self.db
+            .with_conn(|conn| crate::db::gallery_cache::delete_gallery(conn, id))
+            .map_err(RepositoryError::from)
     }
 }

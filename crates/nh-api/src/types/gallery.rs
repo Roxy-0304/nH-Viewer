@@ -1,9 +1,9 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::tag::Tag;
 
 /// Image file type
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ImageFileType {
     Jpg,
@@ -29,7 +29,7 @@ impl std::fmt::Display for ImageFileType {
 }
 
 /// Images metadata for a gallery
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Images {
     pub pages: Vec<ImageFileType>,
     pub cover: ImageFileType,
@@ -37,7 +37,7 @@ pub struct Images {
 }
 
 /// Title of a gallery (English and Japanese)
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Title {
     pub english: Option<String>,
     pub japanese: Option<String>,
@@ -56,7 +56,7 @@ impl Title {
 }
 
 /// A single gallery/doujinshi
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Gallery {
     pub id: u64,
     pub media_id: String,

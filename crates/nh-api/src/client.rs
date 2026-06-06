@@ -8,6 +8,9 @@ use crate::endpoints::GalleryEndpoints;
 use crate::error::{Error, Result};
 use crate::types::{CdnConfig, Gallery, PaginatedResponse};
 
+/// Full browser-like User-Agent string (Chrome on Windows)
+const BROWSER_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+
 /// Configuration for the nhentai API client
 #[derive(Debug, Clone)]
 pub struct ClientConfig {
@@ -23,17 +26,26 @@ pub struct ClientConfig {
     pub retry_delay: Duration,
     /// Whether to dynamically fetch CDN config on init
     pub enable_dynamic_cdn: bool,
+    /// Optional HTTP/SOCKS5 proxy URL (e.g. "http://127.0.0.1:7897")
+    pub proxy: Option<String>,
+    /// Whether to enable cookie jar for session persistence
+    pub cookie_store: bool,
+    /// Path to cookie file for persistence across restarts (requires cookie_store = true)
+    pub cookie_file: Option<std::path::PathBuf>,
 }
 
 impl Default for ClientConfig {
     fn default() -> Self {
         Self {
             base_url: "https://nhentai.net".to_string(),
-            api_key: None,
+            api_key: Some("nhk_3ctklttHlQf3la3PlyYH_Z95aWzt1xHZvFDrye_PYJ1kCW8q".to_string()),
             timeout: Duration::from_secs(30),
             max_retries: 3,
             retry_delay: Duration::from_millis(500),
             enable_dynamic_cdn: true,
+            proxy: None,
+            cookie_store: true,
+            cookie_file: None,
         }
     }
 }
@@ -70,6 +82,24 @@ impl ClientConfig {
         self.enable_dynamic_cdn = enable;
         self
     }
+
+    /// Set an HTTP/SOCKS5 proxy
+    pub fn proxy(mut self, proxy: impl Into<String>) -> Self {
+        self.proxy = Some(proxy.into());
+        self
+    }
+
+    /// Enable or disable cookie jar
+    pub fn cookies(mut self, enable: bool) -> Self {
+        self.cookie_store = enable;
+        self
+    }
+
+    /// Set cookie file path for persistence
+    pub fn cookie_file(mut self, path: impl Into<std::path::PathBuf>) -> Self {
+        self.cookie_file = Some(path.into());
+        self
+    }
 }
 
 /// nhentai API client
@@ -87,10 +117,39 @@ impl NhClient {
     /// fetch CDN configuration from `/api/v2/cdn`. If the fetch fails,
     /// a default fallback configuration is used.
     pub async fn new(config: ClientConfig) -> Result<Self> {
+        let mut builder = Client::builder()
+            .timeout(config.timeout);
+
+        // Proxy
+        if let Some(ref proxy_url) = config.proxy {
+            let proxy = reqwest::Proxy::all(proxy_url)
+                .map_err(|e| Error::CdnConfigFetch { reason: format!("invalid proxy: {e}") })?;
+            builder = builder.proxy(proxy);
+        }
+
+        // Cookie jar
+        if config.cookie_store {
+            builder = builder.cookie_provider(Arc::new(reqwest::cookie::Jar::default()));
+        }
+
+        // Browser-like headers — keep it natural, avoid triggering bot detection
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(
             reqwest::header::USER_AGENT,
-            reqwest::header::HeaderValue::from_static("nh-api/0.1.0"),
+            reqwest::header::HeaderValue::from_static(BROWSER_USER_AGENT),
+        );
+        headers.insert(
+            reqwest::header::ACCEPT,
+            reqwest::header::HeaderValue::from_static("*/*"),
+        );
+        headers.insert(
+            reqwest::header::ACCEPT_LANGUAGE,
+            reqwest::header::HeaderValue::from_static("en-US,en;q=0.9"),
+        );
+        // Note: Accept-Encoding is handled automatically by reqwest's gzip/brotli features
+        headers.insert(
+            reqwest::header::REFERER,
+            reqwest::header::HeaderValue::from_static("https://nhentai.net/"),
         );
 
         if let Some(ref api_key) = config.api_key {
@@ -102,9 +161,8 @@ impl NhClient {
             );
         }
 
-        let client = Client::builder()
+        let client = builder
             .default_headers(headers)
-            .timeout(config.timeout)
             .build()?;
 
         let cdn_config = if config.enable_dynamic_cdn {
@@ -143,10 +201,34 @@ impl NhClient {
     /// Create a client synchronously with static CDN config (no network call).
     /// Use this when you want to avoid the async CDN fetch at construction time.
     pub fn new_static(config: ClientConfig) -> Self {
+        let mut builder = Client::builder().timeout(config.timeout);
+
+        if let Some(ref proxy_url) = config.proxy {
+            let proxy = reqwest::Proxy::all(proxy_url)
+                .expect("Invalid proxy URL");
+            builder = builder.proxy(proxy);
+        }
+
+        if config.cookie_store {
+            builder = builder.cookie_provider(Arc::new(reqwest::cookie::Jar::default()));
+        }
+
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(
             reqwest::header::USER_AGENT,
-            reqwest::header::HeaderValue::from_static("nh-api/0.1.0"),
+            reqwest::header::HeaderValue::from_static(BROWSER_USER_AGENT),
+        );
+        headers.insert(
+            reqwest::header::ACCEPT,
+            reqwest::header::HeaderValue::from_static("*/*"),
+        );
+        headers.insert(
+            reqwest::header::ACCEPT_LANGUAGE,
+            reqwest::header::HeaderValue::from_static("en-US,en;q=0.9"),
+        );
+        headers.insert(
+            reqwest::header::REFERER,
+            reqwest::header::HeaderValue::from_static("https://nhentai.net/"),
         );
 
         if let Some(ref api_key) = config.api_key {
@@ -158,9 +240,8 @@ impl NhClient {
             );
         }
 
-        let client = Client::builder()
+        let client = builder
             .default_headers(headers)
-            .timeout(config.timeout)
             .build()
             .expect("Failed to build HTTP client");
 
@@ -201,6 +282,18 @@ impl NhClient {
     /// Get the current CDN configuration
     pub fn cdn_config(&self) -> &CdnConfig {
         &self.cdn_config
+    }
+
+    /// Warm up: visit the main page to obtain Cloudflare cookies (cf_clearance).
+    /// Returns the HTTP status code of the response.
+    pub async fn warm_up(&self) -> Result<u16> {
+        let url = format!("{}/", self.config.base_url);
+        debug!("Warming up: {}", url);
+
+        let response = self.client.get(&url).send().await?;
+        let status = response.status().as_u16();
+        debug!("Warm-up response: HTTP {}", status);
+        Ok(status)
     }
 
     /// Execute a GET request with retry logic
@@ -284,9 +377,18 @@ impl GalleryEndpoints for NhClient {
     }
 
     async fn search(&self, query: &str, page: u32) -> Result<PaginatedResponse<Gallery>> {
+        // Percent-encode the query for safe URL usage
+        let encoded: String = query.bytes()
+            .map(|b| match b {
+                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                    (b as char).to_string()
+                }
+                _ => format!("%{:02X}", b),
+            })
+            .collect();
         let url = format!(
             "{}/api/galleries/search?query={}&page={}",
-            self.config.base_url, query, page
+            self.config.base_url, encoded, page
         );
         debug!("Searching galleries: {}", url);
 

@@ -56,5 +56,30 @@ local.properties
 .env.local
 .env.*.local
 
+# Rust additional
+*.so
+*.dylib
+*.a
+*.profraw
+*.profdata
+*.d
+
+# Code coverage
+coverage/
+
+# Editor temp files
+*~
+*.swp
+*.swo
+*.orig
+*\#
+.\#*
+
+# Emacs
+\#*\#
+
+# Node.js (if scripts/tools used)
+node_modules/
+
 # Cargo config (optional)
 # .cargo/

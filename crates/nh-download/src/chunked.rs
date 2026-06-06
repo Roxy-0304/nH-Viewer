@@ -1,0 +1,201 @@
+use std::path::Path;
+use std::time::Duration;
+
+use reqwest::Client;
+use tokio::fs::{self, File, OpenOptions};
+use tokio::io::AsyncWriteExt;
+use tracing::{debug, warn};
+
+use crate::error::{Error, Result};
+use crate::progress::DynReporter;
+
+/// Default chunk size: 512 KB
+const DEFAULT_CHUNK_SIZE: u64 = 512 * 1024;
+
+/// Maximum retry attempts per chunk
+const MAX_RETRIES: u32 = 5;
+
+/// Base delay for exponential backoff
+const BASE_DELAY: Duration = Duration::from_millis(500);
+
+/// Chunk downloader with HTTP Range request support and retry logic.
+#[derive(Debug)]
+pub struct ChunkDownloader {
+    client: Client,
+    chunk_size: u64,
+    max_retries: u32,
+}
+
+impl ChunkDownloader {
+    /// Create a new chunk downloader with the given HTTP client.
+    pub fn new(client: Client) -> Self {
+        Self {
+            client,
+            chunk_size: DEFAULT_CHUNK_SIZE,
+            max_retries: MAX_RETRIES,
+        }
+    }
+
+    /// Set the chunk size for Range requests.
+    pub fn with_chunk_size(mut self, size: u64) -> Self {
+        self.chunk_size = size;
+        self
+    }
+
+    /// Set the maximum retry attempts per chunk.
+    pub fn with_max_retries(mut self, retries: u32) -> Self {
+        self.max_retries = retries;
+        self
+    }
+
+    /// Download a file from `url` to `dest_path` using HTTP Range requests.
+    ///
+    /// - If `dest_path` already exists and has partial content, resumes from that point.
+    /// - Writes to a `.tmp` file, then atomically renames on completion.
+    /// - Reports progress via `reporter`.
+    ///
+    /// Returns the total bytes downloaded.
+    pub async fn download(
+        &self,
+        url: &str,
+        dest_path: &Path,
+        reporter: &DynReporter,
+        task_id: u64,
+    ) -> Result<u64> {
+        let tmp_path = dest_path.with_extension("tmp");
+
+        // Check existing partial download
+        let existing_bytes = if tmp_path.exists() {
+            fs::metadata(&tmp_path).await.map(|m| m.len()).unwrap_or(0)
+        } else {
+            0
+        };
+
+        // Probe total size with a HEAD request
+        let total_bytes = self.probe_size(url).await?;
+        debug!(url, total_bytes, existing_bytes, "download started");
+
+        // If we already have the complete file, skip
+        if existing_bytes >= total_bytes && total_bytes > 0 {
+            // Atomic rename from tmp to final
+            fs::rename(&tmp_path, dest_path).await?;
+            reporter.on_complete(task_id);
+            return Ok(total_bytes);
+        }
+
+        // Open file in append mode
+        let mut file = if existing_bytes > 0 {
+            debug!(existing_bytes, "resuming download");
+            OpenOptions::new().append(true).open(&tmp_path).await?
+        } else {
+            // Ensure parent directory exists
+            if let Some(parent) = tmp_path.parent() {
+                fs::create_dir_all(parent).await?;
+            }
+            File::create(&tmp_path).await?
+        };
+
+        let mut downloaded = existing_bytes;
+
+        // Download in chunks using Range requests
+        while downloaded < total_bytes {
+            let range_start = downloaded;
+            let range_end = std::cmp::min(downloaded + self.chunk_size - 1, total_bytes - 1);
+
+            let chunk_data = self
+                .download_chunk(url, range_start, range_end)
+                .await
+                .map_err(|e| {
+                    Error::ChunkFailed {
+                        url: url.to_string(),
+                        retries: self.max_retries,
+                        reason: e.to_string(),
+                    }
+                })?;
+
+            file.write_all(&chunk_data).await?;
+            downloaded += chunk_data.len() as u64;
+
+            reporter.on_progress(task_id, downloaded, total_bytes);
+        }
+
+        file.flush().await?;
+        drop(file);
+
+        // Atomic rename: tmp → final
+        fs::rename(&tmp_path, dest_path).await?;
+
+        debug!(total_bytes = downloaded, "download complete");
+        reporter.on_complete(task_id);
+        Ok(downloaded)
+    }
+
+    /// Probe the total file size with a HEAD request.
+    async fn probe_size(&self, url: &str) -> Result<u64> {
+        let resp = self.client.head(url).send().await?;
+        let content_length = resp
+            .headers()
+            .get(reqwest::header::CONTENT_LENGTH)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(0);
+        Ok(content_length)
+    }
+
+    /// Download a single chunk [range_start, range_end] with exponential backoff retries.
+    async fn download_chunk(
+        &self,
+        url: &str,
+        range_start: u64,
+        range_end: u64,
+    ) -> Result<Vec<u8>> {
+        let range_header = format!("bytes={}-{}", range_start, range_end);
+
+        for attempt in 0..=self.max_retries {
+            if attempt > 0 {
+                let delay = BASE_DELAY * 2u32.pow(attempt - 1);
+                warn!(
+                    attempt,
+                    url, range_start, range_end, ?delay, "retrying chunk download"
+                );
+                tokio::time::sleep(delay).await;
+            }
+
+            match self
+                .client
+                .get(url)
+                .header(reqwest::header::RANGE, &range_header)
+                .send()
+                .await
+            {
+                Ok(resp) => {
+                    let status = resp.status();
+
+                    if status == reqwest::StatusCode::OK
+                        || status == reqwest::StatusCode::PARTIAL_CONTENT
+                    {
+                        let data = resp.bytes().await?;
+                        return Ok(data.to_vec());
+                    }
+
+                    if status == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
+                        // Range not satisfiable — file may be smaller than expected
+                        // Return empty to indicate we're past the end
+                        return Ok(Vec::new());
+                    }
+
+                    warn!(status = %status, "unexpected status code in chunk download");
+                }
+                Err(e) => {
+                    warn!(error = %e, "chunk download request failed");
+                }
+            }
+        }
+
+        Err(Error::ChunkFailed {
+            url: url.to_string(),
+            retries: self.max_retries,
+            reason: "all retries exhausted".to_string(),
+        })
+    }
+}

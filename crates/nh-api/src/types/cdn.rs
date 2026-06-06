@@ -1,7 +1,7 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// CDN configuration response from /api/v2/cdn
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CdnConfig {
     /// Available image server URLs
     pub image_servers: Vec<String>,
