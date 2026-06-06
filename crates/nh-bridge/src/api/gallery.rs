@@ -1,46 +1,80 @@
-use once_cell::sync::OnceCell;
-use tokio::sync::OnceCell as AsyncOnceCell;
+use std::sync::Arc;
 
-use nh_api::endpoints::GalleryEndpoints;
-use nh_api::image_url::{get_cover_url, get_thumbnail_url};
-use nh_api::{Gallery, NhClient};
-use nh_storage::repository::GalleryRepository;
+use once_cell::sync::OnceCell;
+use tokio::sync::{OnceCell as AsyncOnceCell, RwLock};
+
+use nh_api::client::ClientConfig;
+use nh_api::endpoints::{GalleryEndpoints, Sort};
+use nh_api::image_url::{build_image_url, build_thumb_url};
+use nh_api::{GalleryDetailResponse, GalleryListItem, NhClient};
+use nh_storage::db::gallery_cache;
 pub use nh_storage::Storage;
 
 // ---------------------------------------------------------------------------
 // Global singletons (initialised lazily)
 // ---------------------------------------------------------------------------
 
-static API_CLIENT: AsyncOnceCell<NhClient> = AsyncOnceCell::const_new();
+static API_CLIENT: AsyncOnceCell<Arc<RwLock<NhClient>>> = AsyncOnceCell::const_new();
 static STORAGE: OnceCell<Storage> = OnceCell::new();
 
 /// Initialise the bridge layer — call once from Dart during app startup.
 pub async fn init_bridge(storage: Storage) {
-    // Store the storage instance (blocking is fine — it runs once).
+    init_bridge_with_config(storage, ClientConfig::default()).await;
+}
+
+/// Initialise the bridge layer with a custom `ClientConfig`.
+#[flutter_rust_bridge::frb(ignore)]
+pub async fn init_bridge_with_config(storage: Storage, config: ClientConfig) {
     STORAGE
         .set(storage)
         .expect("init_bridge has already been called");
 
-    // Lazily create the API client.
     API_CLIENT
         .get_or_init(|| async {
-            NhClient::with_api_key(None)
+            let client = NhClient::new(config.clone())
                 .await
-                .expect("failed to create NhClient")
+                .expect("failed to create NhClient");
+            Arc::new(RwLock::new(client))
         })
         .await;
 }
 
-/// Convenience: get the global Storage handle.
-fn storage() -> &'static Storage {
-    STORAGE.get().expect("init_bridge has not been called yet")
+fn storage() -> anyhow::Result<&'static Storage> {
+    STORAGE
+        .get()
+        .ok_or_else(|| anyhow::anyhow!("init_bridge has not been called yet"))
 }
 
-/// Convenience: get the global NhClient handle.
-fn api_client() -> &'static NhClient {
-    API_CLIENT
+async fn api_client() -> anyhow::Result<tokio::sync::RwLockReadGuard<'static, NhClient>> {
+    let cell = API_CLIENT
         .get()
-        .expect("API client not initialised — call init_bridge first")
+        .ok_or_else(|| anyhow::anyhow!("API client not initialised — call init_bridge first"))?;
+    Ok(cell.read().await)
+}
+
+// ---------------------------------------------------------------------------
+// API Key management
+// ---------------------------------------------------------------------------
+
+#[flutter_rust_bridge::frb]
+pub async fn nh_set_api_key(api_key: String) -> anyhow::Result<()> {
+    let cell = API_CLIENT
+        .get()
+        .ok_or_else(|| anyhow::anyhow!("API client not initialised — call init_bridge first"))?;
+
+    let config = ClientConfig::new(&api_key);
+    let new_client = NhClient::new(config).await?;
+
+    let mut guard = cell.write().await;
+    *guard = new_client;
+
+    Ok(())
+}
+
+#[flutter_rust_bridge::frb]
+pub async fn nh_get_api_key() -> anyhow::Result<String> {
+    let client = api_client().await?;
+    Ok(client.api_key().unwrap_or_default().to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -57,9 +91,9 @@ pub struct GalleryInfo {
     pub title_pretty: Option<String>,
     pub num_pages: u32,
     pub num_favorites: u32,
-    pub cover_ext: Option<String>,
     pub cover_url: Option<String>,
     pub thumbnail_url: Option<String>,
+    pub tags: Vec<TagInfo>,
 }
 
 /// Lightweight preview for list views.
@@ -68,63 +102,77 @@ pub struct GalleryPreviewInfo {
     pub id: u64,
     pub title: String,
     pub num_pages: u32,
-    pub cover_ext: Option<String>,
     pub cover_url: Option<String>,
+}
+
+/// Tag info for Dart.
+#[derive(Debug, Clone)]
+pub struct TagInfo {
+    pub id: u64,
+    pub tag_type: String,
+    pub name: String,
+    pub url: String,
+    pub count: u64,
 }
 
 // ---------------------------------------------------------------------------
 // Conversion helpers
 // ---------------------------------------------------------------------------
 
-fn gallery_to_info(g: &Gallery) -> GalleryInfo {
-    let cdn = API_CLIENT.get().map(|c| c.cdn_config());
+fn gallery_detail_to_info(
+    g: &GalleryDetailResponse,
+    cdn: Option<&nh_api::types::CdnConfig>,
+) -> GalleryInfo {
     let (cover_url, thumbnail_url) = match cdn {
         Some(cdn) => {
-            let cover_ext = g.images.cover.as_extension();
-            let cover = get_cover_url(cdn, &g.media_id, cover_ext, 0);
-            let thumb = get_thumbnail_url(cdn, &g.media_id, 1, 0);
+            let server_idx = g.id as usize;
+            let cover = build_image_url(cdn, &g.cover.path, server_idx);
+            let thumb = build_thumb_url(cdn, &g.thumbnail.path, server_idx);
             (Some(cover), Some(thumb))
         }
         None => (None, None),
     };
 
+    let tags: Vec<TagInfo> = g
+        .tags
+        .iter()
+        .map(|t| TagInfo {
+            id: t.id,
+            tag_type: t.tag_type.clone(),
+            name: t.name.clone(),
+            url: t.url.clone(),
+            count: t.count,
+        })
+        .collect();
+
     GalleryInfo {
         id: g.id,
         media_id: g.media_id.clone(),
-        title_en: g.title.english.clone(),
+        title_en: Some(g.title.english.clone()),
         title_jp: g.title.japanese.clone(),
-        title_pretty: g.title.pretty.clone(),
+        title_pretty: Some(g.title.pretty.clone()),
         num_pages: g.num_pages,
         num_favorites: g.num_favorites,
-        cover_ext: Some(g.images.cover.as_extension().to_string()),
         cover_url,
         thumbnail_url,
+        tags,
     }
 }
 
-fn cached_to_info(c: &nh_storage::db::gallery_cache::CachedGallery) -> GalleryInfo {
-    GalleryInfo {
-        id: c.id,
-        media_id: c.media_id.clone(),
-        title_en: c.title_en.clone(),
-        title_jp: c.title_jp.clone(),
-        title_pretty: c.title_pretty.clone(),
-        num_pages: c.num_pages,
-        num_favorites: c.num_favorites,
-        cover_ext: c.cover_ext.clone(),
-        cover_url: None,
-        thumbnail_url: None,
-    }
-}
+fn gallery_list_to_preview(
+    g: &GalleryListItem,
+    cdn: Option<&nh_api::types::CdnConfig>,
+) -> GalleryPreviewInfo {
+    let cover_url = cdn.map(|c| {
+        let server_idx = g.id as usize;
+        build_thumb_url(c, &g.thumbnail, server_idx)
+    });
 
-#[allow(dead_code)]
-fn preview_to_info(p: &nh_storage::db::gallery_cache::GalleryPreview) -> GalleryPreviewInfo {
     GalleryPreviewInfo {
-        id: p.id,
-        title: p.title.clone(),
-        num_pages: p.num_pages,
-        cover_ext: p.cover_ext.clone(),
-        cover_url: None,
+        id: g.id,
+        title: g.best_title().to_string(),
+        num_pages: g.num_pages,
+        cover_url,
     }
 }
 
@@ -132,88 +180,84 @@ fn preview_to_info(p: &nh_storage::db::gallery_cache::GalleryPreview) -> Gallery
 // Public API exposed to Dart
 // ---------------------------------------------------------------------------
 
-/// Fetch a gallery by ID.
-///
-/// Strategy: look in local cache first; on miss, fetch from the remote API
-/// and persist the result for next time.
+/// Warm up the connection by visiting the main page.
+#[flutter_rust_bridge::frb]
+pub async fn nh_warm_up() -> anyhow::Result<u16> {
+    let client = api_client().await?;
+    let status = client.warm_up().await?;
+    Ok(status)
+}
+
+/// Fetch a gallery by ID (cache-first strategy).
 #[flutter_rust_bridge::frb]
 pub async fn nh_get_gallery(id: u64) -> anyhow::Result<GalleryInfo> {
-    let store = storage();
+    let store = storage()?;
+    let pool = store.db().pool();
 
-    // 1. Try local cache
-    if let Some(cached) = store.get_gallery(id).await? {
-        // If we have full raw_json, we can fill in image URLs
-        let mut info = cached_to_info(&cached);
-
-        // Try to fill image URLs from CDN config if available
-        if let Some(client) = API_CLIENT.get() {
-            if let Some(ref raw) = cached.raw_json {
-                if let Ok(gallery) = serde_json::from_str::<Gallery>(raw) {
-                    let cdn = client.cdn_config();
-                    let cover_ext = gallery.images.cover.as_extension();
-                    info.cover_url = Some(get_cover_url(cdn, &gallery.media_id, cover_ext, 0));
-                    info.thumbnail_url =
-                        Some(get_thumbnail_url(cdn, &gallery.media_id, 1, 0));
-                }
-            }
+    // 1. Try local cache — read the raw JSON string
+    if let Some(raw) = gallery_cache::get_gallery_raw(pool, id).await? {
+        if let Ok(gallery) = serde_json::from_str::<GalleryDetailResponse>(&raw) {
+            let info = gallery_detail_to_info(&gallery, None);
+            return Ok(info);
         }
-        return Ok(info);
     }
 
     // 2. Fetch from API
-    let client = api_client();
-    let gallery = client.get_gallery(id).await?;
+    let client = api_client().await?;
+    let gallery = client.get_gallery(id, None).await?;
+    let cdn = Some(client.cdn_config());
 
-    // 3. Cache locally for next time
-    let cached = nh_storage::db::gallery_cache::CachedGallery {
-        id: gallery.id,
-        media_id: gallery.media_id.clone(),
-        title_en: gallery.title.english.clone(),
-        title_jp: gallery.title.japanese.clone(),
-        title_pretty: gallery.title.pretty.clone(),
-        num_pages: gallery.num_pages,
-        num_favorites: gallery.num_favorites,
-        cover_ext: Some(gallery.images.cover.as_extension().to_string()),
-        tags_json: Some(serde_json::to_string(&gallery.tags).unwrap_or_default()),
-        raw_json: Some(serde_json::to_string(&gallery).unwrap_or_default()),
-        cached_at: 0, // will be filled by the DB
-    };
-    let _ = store.save_gallery(&cached).await; // best-effort
+    // 3. Cache the raw JSON for next time (best-effort)
+    let raw_json = serde_json::to_string(&gallery).unwrap_or_default();
+    let _ = gallery_cache::upsert_gallery(pool, id, &raw_json).await;
 
-    Ok(gallery_to_info(&gallery))
+    Ok(gallery_detail_to_info(&gallery, cdn))
 }
 
 /// Search galleries by query string.
-///
-/// Fetches results from the remote API.
 #[flutter_rust_bridge::frb]
 pub async fn nh_search_galleries(
     query: String,
     page: u32,
 ) -> anyhow::Result<Vec<GalleryPreviewInfo>> {
-    let client = api_client();
-    let result = client.search(&query, page).await?;
+    let client = api_client().await?;
+    let result = client.search(&query, Sort::Date, page).await?;
 
+    let cdn = client.cdn_config();
     let previews: Vec<GalleryPreviewInfo> = result
         .result
         .iter()
-        .map(|g| {
-            let cdn = client.cdn_config();
-            let cover_ext = g.images.cover.as_extension();
-            GalleryPreviewInfo {
-                id: g.id,
-                title: g.title.best().to_string(),
-                num_pages: g.num_pages,
-                cover_ext: Some(cover_ext.to_string()),
-                cover_url: Some(get_cover_url(cdn, &g.media_id, cover_ext, 0)),
-            }
-        })
+        .map(|g| gallery_list_to_preview(g, Some(cdn)))
         .collect();
 
     // Record search in history (best-effort)
-    let _ = storage()
-        .record_search(&query, previews.len() as u32)
-        .await;
+    if let Ok(store) = storage() {
+        let pool = store.db().pool();
+        let _ = gallery_cache::record_search(pool, &query, previews.len() as u32).await;
+    }
 
     Ok(previews)
+}
+
+/// Get popular galleries.
+#[flutter_rust_bridge::frb]
+pub async fn nh_get_popular() -> anyhow::Result<Vec<GalleryPreviewInfo>> {
+    let client = api_client().await?;
+    let result = client.get_popular_galleries().await?;
+
+    let cdn = client.cdn_config();
+    let previews: Vec<GalleryPreviewInfo> = result
+        .iter()
+        .map(|g| gallery_list_to_preview(g, Some(cdn)))
+        .collect();
+
+    Ok(previews)
+}
+
+/// Get a random gallery ID.
+#[flutter_rust_bridge::frb]
+pub async fn nh_get_random() -> anyhow::Result<u64> {
+    let client = api_client().await?;
+    let id = client.get_random_gallery().await?;
+    Ok(id)
 }

@@ -60,6 +60,8 @@ pub struct DownloadTask {
     pub downloaded_bytes: u64,
     /// CDN server index for load balancing
     pub server_index: usize,
+    /// CDN-relative path from the API (e.g. "/galleries/1234/1.jpg")
+    pub path: String,
 }
 
 impl DownloadTask {
@@ -115,6 +117,7 @@ impl DownloadQueue {
         ext: String,
         priority: Priority,
         server_index: usize,
+        path: String,
     ) -> u64 {
         let id = {
             let mut id_guard = self.next_id.lock().await;
@@ -134,6 +137,7 @@ impl DownloadQueue {
             total_bytes: 0,
             downloaded_bytes: 0,
             server_index,
+            path,
         };
 
         self.insert_sorted(task).await;
@@ -278,7 +282,7 @@ impl DownloadQueue {
                 task.state = TaskState::Pending;
             }
         }
-        self.notify.notify_one();
+        self.notify.notify_waiters();
     }
 
     /// Cancel all non-terminal tasks.

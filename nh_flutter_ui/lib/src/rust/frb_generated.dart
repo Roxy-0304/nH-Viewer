@@ -67,7 +67,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.12.0';
 
   @override
-  int get rustContentHash => -359685878;
+  int get rustContentHash => 1977388806;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -85,12 +85,22 @@ abstract class RustLibApi extends BaseApi {
 
   Future<void> crateApiGalleryInitBridge({required Storage storage});
 
+  Future<String> crateApiGalleryNhGetApiKey();
+
   Future<GalleryInfo> crateApiGalleryNhGetGallery({required BigInt id});
+
+  Future<List<GalleryPreviewInfo>> crateApiGalleryNhGetPopular();
+
+  Future<BigInt> crateApiGalleryNhGetRandom();
 
   Future<List<GalleryPreviewInfo>> crateApiGalleryNhSearchGalleries({
     required String query,
     required int page,
   });
+
+  Future<void> crateApiGalleryNhSetApiKey({required String apiKey});
+
+  Future<int> crateApiGalleryNhWarmUp();
 
   RustArcIncrementStrongCountFnType get rust_arc_increment_strong_count_Storage;
 
@@ -189,6 +199,33 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "init_bridge", argNames: ["storage"]);
 
   @override
+  Future<String> crateApiGalleryNhGetApiKey() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 4,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGalleryNhGetApiKeyConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGalleryNhGetApiKeyConstMeta =>
+      const TaskConstMeta(debugName: "nh_get_api_key", argNames: []);
+
+  @override
   Future<GalleryInfo> crateApiGalleryNhGetGallery({required BigInt id}) {
     return handler.executeNormal(
       NormalTask(
@@ -198,7 +235,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 4,
+            funcId: 5,
             port: port_,
           );
         },
@@ -217,6 +254,60 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "nh_get_gallery", argNames: ["id"]);
 
   @override
+  Future<List<GalleryPreviewInfo>> crateApiGalleryNhGetPopular() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 6,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_gallery_preview_info,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGalleryNhGetPopularConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGalleryNhGetPopularConstMeta =>
+      const TaskConstMeta(debugName: "nh_get_popular", argNames: []);
+
+  @override
+  Future<BigInt> crateApiGalleryNhGetRandom() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 7,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_u_64,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGalleryNhGetRandomConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGalleryNhGetRandomConstMeta =>
+      const TaskConstMeta(debugName: "nh_get_random", argNames: []);
+
+  @override
   Future<List<GalleryPreviewInfo>> crateApiGalleryNhSearchGalleries({
     required String query,
     required int page,
@@ -230,7 +321,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 5,
+            funcId: 8,
             port: port_,
           );
         },
@@ -250,6 +341,61 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         debugName: "nh_search_galleries",
         argNames: ["query", "page"],
       );
+
+  @override
+  Future<void> crateApiGalleryNhSetApiKey({required String apiKey}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(apiKey, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 9,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGalleryNhSetApiKeyConstMeta,
+        argValues: [apiKey],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGalleryNhSetApiKeyConstMeta =>
+      const TaskConstMeta(debugName: "nh_set_api_key", argNames: ["apiKey"]);
+
+  @override
+  Future<int> crateApiGalleryNhWarmUp() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 10,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_u_16,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiGalleryNhWarmUpConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGalleryNhWarmUpConstMeta =>
+      const TaskConstMeta(debugName: "nh_warm_up", argNames: []);
 
   RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_Storage => wire
@@ -303,9 +449,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       titlePretty: dco_decode_opt_String(arr[4]),
       numPages: dco_decode_u_32(arr[5]),
       numFavorites: dco_decode_u_32(arr[6]),
-      coverExt: dco_decode_opt_String(arr[7]),
-      coverUrl: dco_decode_opt_String(arr[8]),
-      thumbnailUrl: dco_decode_opt_String(arr[9]),
+      coverUrl: dco_decode_opt_String(arr[7]),
+      thumbnailUrl: dco_decode_opt_String(arr[8]),
+      tags: dco_decode_list_tag_info(arr[9]),
     );
   }
 
@@ -313,14 +459,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   GalleryPreviewInfo dco_decode_gallery_preview_info(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 5)
-      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
     return GalleryPreviewInfo(
       id: dco_decode_u_64(arr[0]),
       title: dco_decode_String(arr[1]),
       numPages: dco_decode_u_32(arr[2]),
-      coverExt: dco_decode_opt_String(arr[3]),
-      coverUrl: dco_decode_opt_String(arr[4]),
+      coverUrl: dco_decode_opt_String(arr[3]),
     );
   }
 
@@ -337,9 +482,36 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<TagInfo> dco_decode_list_tag_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_tag_info).toList();
+  }
+
+  @protected
   String? dco_decode_opt_String(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_String(raw);
+  }
+
+  @protected
+  TagInfo dco_decode_tag_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    return TagInfo(
+      id: dco_decode_u_64(arr[0]),
+      tagType: dco_decode_String(arr[1]),
+      name: dco_decode_String(arr[2]),
+      url: dco_decode_String(arr[3]),
+      count: dco_decode_u_64(arr[4]),
+    );
+  }
+
+  @protected
+  int dco_decode_u_16(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as int;
   }
 
   @protected
@@ -420,9 +592,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_titlePretty = sse_decode_opt_String(deserializer);
     var var_numPages = sse_decode_u_32(deserializer);
     var var_numFavorites = sse_decode_u_32(deserializer);
-    var var_coverExt = sse_decode_opt_String(deserializer);
     var var_coverUrl = sse_decode_opt_String(deserializer);
     var var_thumbnailUrl = sse_decode_opt_String(deserializer);
+    var var_tags = sse_decode_list_tag_info(deserializer);
     return GalleryInfo(
       id: var_id,
       mediaId: var_mediaId,
@@ -431,9 +603,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       titlePretty: var_titlePretty,
       numPages: var_numPages,
       numFavorites: var_numFavorites,
-      coverExt: var_coverExt,
       coverUrl: var_coverUrl,
       thumbnailUrl: var_thumbnailUrl,
+      tags: var_tags,
     );
   }
 
@@ -445,13 +617,11 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_id = sse_decode_u_64(deserializer);
     var var_title = sse_decode_String(deserializer);
     var var_numPages = sse_decode_u_32(deserializer);
-    var var_coverExt = sse_decode_opt_String(deserializer);
     var var_coverUrl = sse_decode_opt_String(deserializer);
     return GalleryPreviewInfo(
       id: var_id,
       title: var_title,
       numPages: var_numPages,
-      coverExt: var_coverExt,
       coverUrl: var_coverUrl,
     );
   }
@@ -478,6 +648,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<TagInfo> sse_decode_list_tag_info(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <TagInfo>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_tag_info(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   String? sse_decode_opt_String(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -486,6 +668,29 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     } else {
       return null;
     }
+  }
+
+  @protected
+  TagInfo sse_decode_tag_info(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_id = sse_decode_u_64(deserializer);
+    var var_tagType = sse_decode_String(deserializer);
+    var var_name = sse_decode_String(deserializer);
+    var var_url = sse_decode_String(deserializer);
+    var var_count = sse_decode_u_64(deserializer);
+    return TagInfo(
+      id: var_id,
+      tagType: var_tagType,
+      name: var_name,
+      url: var_url,
+      count: var_count,
+    );
+  }
+
+  @protected
+  int sse_decode_u_16(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getUint16();
   }
 
   @protected
@@ -580,9 +785,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_opt_String(self.titlePretty, serializer);
     sse_encode_u_32(self.numPages, serializer);
     sse_encode_u_32(self.numFavorites, serializer);
-    sse_encode_opt_String(self.coverExt, serializer);
     sse_encode_opt_String(self.coverUrl, serializer);
     sse_encode_opt_String(self.thumbnailUrl, serializer);
+    sse_encode_list_tag_info(self.tags, serializer);
   }
 
   @protected
@@ -594,7 +799,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_u_64(self.id, serializer);
     sse_encode_String(self.title, serializer);
     sse_encode_u_32(self.numPages, serializer);
-    sse_encode_opt_String(self.coverExt, serializer);
     sse_encode_opt_String(self.coverUrl, serializer);
   }
 
@@ -621,6 +825,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_list_tag_info(List<TagInfo> self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_tag_info(item, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_opt_String(String? self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -628,6 +841,22 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     if (self != null) {
       sse_encode_String(self, serializer);
     }
+  }
+
+  @protected
+  void sse_encode_tag_info(TagInfo self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_64(self.id, serializer);
+    sse_encode_String(self.tagType, serializer);
+    sse_encode_String(self.name, serializer);
+    sse_encode_String(self.url, serializer);
+    sse_encode_u_64(self.count, serializer);
+  }
+
+  @protected
+  void sse_encode_u_16(int self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putUint16(self);
   }
 
   @protected

@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection};
+use sqlx::SqlitePool;
 
 use crate::error::{Error, Result};
 
@@ -16,106 +16,111 @@ pub struct FavoriteEntry {
 /// Add a gallery to favorites. Returns the new entry id.
 ///
 /// If the gallery is already in favorites, returns `Error::Duplicate`.
-pub fn add(
-    conn: &Connection,
+pub async fn add(
+    pool: &SqlitePool,
     gallery_id: i64,
     title: &str,
     cover_path: Option<&str>,
 ) -> Result<i64> {
     // Check for existing entry
-    let exists: bool = conn
-        .query_row(
-            "SELECT COUNT(*) FROM favorites WHERE gallery_id = ?1",
-            params![gallery_id],
-            |row| {
-                let count: i64 = row.get(0)?;
-                Ok(count > 0)
-            },
-        )
-        .unwrap_or(false);
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM favorites WHERE gallery_id = ?1",
+    )
+    .bind(gallery_id)
+    .fetch_one(pool)
+    .await
+    .unwrap_or(0);
 
-    if exists {
+    if count > 0 {
         return Err(Error::Duplicate {
             entity: "favorite".to_string(),
             key: gallery_id.to_string(),
         });
     }
 
-    conn.execute(
+    let result = sqlx::query(
         "INSERT INTO favorites (gallery_id, title, cover_path) VALUES (?1, ?2, ?3)",
-        params![gallery_id, title, cover_path],
-    )?;
-    Ok(conn.last_insert_rowid())
+    )
+    .bind(gallery_id)
+    .bind(title)
+    .bind(cover_path)
+    .execute(pool)
+    .await?;
+    Ok(result.last_insert_rowid())
 }
 
 /// Remove a gallery from favorites. Returns true if an entry was deleted.
-pub fn remove(conn: &Connection, gallery_id: i64) -> Result<bool> {
-    let count = conn.execute(
-        "DELETE FROM favorites WHERE gallery_id = ?1",
-        params![gallery_id],
-    )?;
-    Ok(count > 0)
+pub async fn remove(pool: &SqlitePool, gallery_id: i64) -> Result<bool> {
+    let result = sqlx::query("DELETE FROM favorites WHERE gallery_id = ?1")
+        .bind(gallery_id)
+        .execute(pool)
+        .await?;
+    Ok(result.rows_affected() > 0)
 }
 
 /// List all favorites, most recently added first
-pub fn list(conn: &Connection, limit: u32, offset: u32) -> Result<Vec<FavoriteEntry>> {
-    let mut stmt = conn.prepare(
+pub async fn list(pool: &SqlitePool, limit: u32, offset: u32) -> Result<Vec<FavoriteEntry>> {
+    let rows = sqlx::query_as::<_, (i64, i64, String, Option<String>, i64)>(
         "SELECT id, gallery_id, title, cover_path, added_at
          FROM favorites ORDER BY added_at DESC LIMIT ?1 OFFSET ?2",
-    )?;
-    let rows = stmt.query_map(params![limit, offset], |row| {
-        Ok(FavoriteEntry {
-            id: row.get(0)?,
-            gallery_id: row.get(1)?,
-            title: row.get(2)?,
-            cover_path: row.get(3)?,
-            added_at: row.get(4)?,
+    )
+    .bind(limit as i64)
+    .bind(offset as i64)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| FavoriteEntry {
+            id: r.0,
+            gallery_id: r.1,
+            title: r.2,
+            cover_path: r.3,
+            added_at: r.4,
         })
-    })?;
-    let mut entries = Vec::new();
-    for row in rows {
-        entries.push(row?);
-    }
-    Ok(entries)
+        .collect())
 }
 
 /// Check if a gallery is in favorites
-pub fn is_favorite(conn: &Connection, gallery_id: i64) -> Result<bool> {
-    let count: i64 = conn.query_row(
+pub async fn is_favorite(pool: &SqlitePool, gallery_id: i64) -> Result<bool> {
+    let count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM favorites WHERE gallery_id = ?1",
-        params![gallery_id],
-        |row| row.get(0),
-    )?;
+    )
+    .bind(gallery_id)
+    .fetch_one(pool)
+    .await?;
     Ok(count > 0)
 }
 
 /// Get a favorite entry by gallery id
-pub fn by_gallery_id(conn: &Connection, gallery_id: i64) -> Result<FavoriteEntry> {
-    conn.query_row(
+pub async fn by_gallery_id(pool: &SqlitePool, gallery_id: i64) -> Result<FavoriteEntry> {
+    let row = sqlx::query_as::<_, (i64, i64, String, Option<String>, i64)>(
         "SELECT id, gallery_id, title, cover_path, added_at
          FROM favorites WHERE gallery_id = ?1",
-        params![gallery_id],
-        |row| {
-            Ok(FavoriteEntry {
-                id: row.get(0)?,
-                gallery_id: row.get(1)?,
-                title: row.get(2)?,
-                cover_path: row.get(3)?,
-                added_at: row.get(4)?,
-            })
-        },
     )
-    .map_err(|e| match e {
-        rusqlite::Error::QueryReturnedNoRows => Error::NotFound {
+    .bind(gallery_id)
+    .fetch_optional(pool)
+    .await?;
+
+    match row {
+        Some(r) => Ok(FavoriteEntry {
+            id: r.0,
+            gallery_id: r.1,
+            title: r.2,
+            cover_path: r.3,
+            added_at: r.4,
+        }),
+        None => Err(Error::NotFound {
             entity: "favorite".to_string(),
             key: gallery_id.to_string(),
-        },
-        other => Error::Sqlite(other),
-    })
+        }),
+    }
 }
 
 /// Get total favorites count
-pub fn count(conn: &Connection) -> Result<u64> {
-    let count: i64 = conn.query_row("SELECT COUNT(*) FROM favorites", [], |row| row.get(0))?;
+pub async fn count(pool: &SqlitePool) -> Result<u64> {
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM favorites")
+        .fetch_one(pool)
+        .await?;
     Ok(count as u64)
 }

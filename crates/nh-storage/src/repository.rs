@@ -14,6 +14,8 @@ pub enum RepositoryError {
     NotFound { entity: String, key: String },
     #[error("network error: {0}")]
     Network(String),
+    #[error("other: {0}")]
+    Other(String),
 }
 
 /// Abstract gallery data access.

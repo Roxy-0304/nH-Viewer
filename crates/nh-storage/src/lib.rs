@@ -3,7 +3,7 @@
 //! Local persistence layer for nh-viewer.
 //!
 //! This crate provides:
-//! - **SQLite database** for browsing history and favorites
+//! - **SQLite database** for browsing history and favorites (via async sqlx)
 //! - **Disk caches** for original images and thumbnails (with LRU eviction)
 //! - **Settings management** with JSON persistence
 //!
@@ -59,7 +59,7 @@ impl Storage {
         settings.ensure_dirs().await?;
 
         // Open database
-        let db = Database::open(&settings.db_path)?;
+        let db = Database::open(&settings.db_path).await?;
 
         // Create cache manager
         let cache = CacheManager::new(
@@ -117,8 +117,9 @@ impl GalleryRepository for Storage {
         &self,
         id: u64,
     ) -> std::result::Result<Option<crate::db::gallery_cache::CachedGallery>, RepositoryError> {
-        self.db
-            .with_conn(|conn| crate::db::gallery_cache::get_gallery(conn, id))
+        let pool = self.db.pool();
+        crate::db::gallery_cache::get_gallery(pool, id)
+            .await
             .map_err(RepositoryError::from)
     }
 
@@ -129,10 +130,9 @@ impl GalleryRepository for Storage {
     ) -> std::result::Result<Vec<crate::db::gallery_cache::GalleryPreview>, RepositoryError> {
         let limit = 25u32;
         let offset = (page.saturating_sub(1)) * limit;
-        self.db
-            .with_conn(|conn| {
-                crate::db::gallery_cache::search_galleries(conn, query, limit, offset)
-            })
+        let pool = self.db.pool();
+        crate::db::gallery_cache::search_galleries(pool, query, limit, offset)
+            .await
             .map_err(RepositoryError::from)
     }
 
@@ -140,8 +140,9 @@ impl GalleryRepository for Storage {
         &self,
         gallery: &crate::db::gallery_cache::CachedGallery,
     ) -> std::result::Result<(), RepositoryError> {
-        self.db
-            .with_conn(|conn| crate::db::gallery_cache::upsert_gallery(conn, gallery))
+        let pool = self.db.pool();
+        crate::db::gallery_cache::upsert_gallery_full(pool, gallery)
+            .await
             .map_err(RepositoryError::from)
     }
 
@@ -150,26 +151,26 @@ impl GalleryRepository for Storage {
         query: &str,
         result_count: u32,
     ) -> std::result::Result<(), RepositoryError> {
-        self.db
-            .with_conn(|conn| {
-                crate::db::gallery_cache::record_search(conn, query, result_count)?;
-                Ok(())
-            })
-            .map_err(RepositoryError::from)
+        let pool = self.db.pool();
+        crate::db::gallery_cache::record_search(pool, query, result_count)
+            .await
+            .map_err(|e| RepositoryError::Other(e.to_string()))
     }
 
     async fn list_search_history(
         &self,
         limit: u32,
     ) -> std::result::Result<Vec<crate::db::gallery_cache::SearchHistoryItem>, RepositoryError> {
-        self.db
-            .with_conn(|conn| crate::db::gallery_cache::list_search_history(conn, limit))
+        let pool = self.db.pool();
+        crate::db::gallery_cache::list_search_history(pool, limit)
+            .await
             .map_err(RepositoryError::from)
     }
 
     async fn delete_gallery(&self, id: u64) -> std::result::Result<bool, RepositoryError> {
-        self.db
-            .with_conn(|conn| crate::db::gallery_cache::delete_gallery(conn, id))
+        let pool = self.db.pool();
+        crate::db::gallery_cache::delete_gallery(pool, id)
+            .await
             .map_err(RepositoryError::from)
     }
 }

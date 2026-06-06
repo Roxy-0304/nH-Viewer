@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest::Client;
@@ -7,7 +8,7 @@ use tokio::io::AsyncWriteExt;
 use tracing::{debug, warn};
 
 use crate::error::{Error, Result};
-use crate::progress::DynReporter;
+use crate::progress::ProgressReporter;
 
 /// Default chunk size: 512 KB
 const DEFAULT_CHUNK_SIZE: u64 = 512 * 1024;
@@ -17,6 +18,53 @@ const MAX_RETRIES: u32 = 5;
 
 /// Base delay for exponential backoff
 const BASE_DELAY: Duration = Duration::from_millis(500);
+
+// ---------------------------------------------------------------------------
+// Top-level convenience function (requested API)
+// ---------------------------------------------------------------------------
+
+/// Download a single file with chunked HTTP Range requests and resume support.
+///
+/// # Arguments
+/// * `client` — reqwest HTTP client to use
+/// * `url` — the URL to download from
+/// * `save_path` — the final destination path (a `.tmp` sibling is used during download)
+/// * `task_id` — an opaque task identifier passed to `reporter`
+/// * `reporter` — progress callback sink
+///
+/// # Behaviour
+/// 1. If a `.tmp` file already exists at `save_path.tmp`, its length is used as the
+///    starting byte offset (resume).
+/// 2. A `HEAD` request probes the total file size (via `Content-Length`).
+/// 3. Data is streamed in chunks of [`DEFAULT_CHUNK_SIZE`] using `Range` headers.
+/// 4. Each chunk is written immediately to disk via [`tokio::io::AsyncWriteExt`],
+///    keeping memory usage bounded.
+/// 5. After every chunk the reporter is notified via
+///    `reporter.update_progress(task_id, downloaded, total)`.
+/// 6. On completion the `.tmp` file is atomically renamed to `save_path`.
+///
+/// # Error handling
+/// * Network timeouts are propagated from the underlying reqwest client.
+/// * HTTP 416 (Range Not Satisfiable) is treated as "already complete".
+/// * Each chunk is retried up to [`MAX_RETRIES`] times with exponential backoff.
+pub async fn download_file_chunked(
+    client: &Client,
+    url: &str,
+    save_path: &Path,
+    task_id: u64,
+    reporter: Arc<dyn ProgressReporter>,
+) -> anyhow::Result<()> {
+    let downloader = ChunkDownloader::new(client.clone());
+    let reporter_ref: &dyn ProgressReporter = &*reporter;
+    downloader
+        .download(url, save_path, reporter_ref, task_id)
+        .await?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// ChunkDownloader struct (builder pattern, reusable)
+// ---------------------------------------------------------------------------
 
 /// Chunk downloader with HTTP Range request support and retry logic.
 #[derive(Debug)]
@@ -59,7 +107,7 @@ impl ChunkDownloader {
         &self,
         url: &str,
         dest_path: &Path,
-        reporter: &DynReporter,
+        reporter: &dyn ProgressReporter,
         task_id: u64,
     ) -> Result<u64> {
         let tmp_path = dest_path.with_extension("tmp");

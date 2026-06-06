@@ -3,65 +3,73 @@ pub mod gallery_cache;
 pub mod history;
 
 use std::path::Path;
-use std::sync::Mutex;
 
-use rusqlite::Connection;
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+use sqlx::SqlitePool;
 use tracing::{debug, info};
 
 use crate::error::{Error, Result};
 
-/// Database handle wrapping a SQLite connection.
+/// Database handle wrapping a sqlx SQLite connection pool.
 ///
-/// All database operations are synchronous (rusqlite) and should be called
-/// via `tokio::task::spawn_blocking` from async code.
+/// All database operations are fully async via sqlx.
 pub struct Database {
-    conn: Mutex<Connection>,
+    pool: SqlitePool,
 }
 
 impl Database {
     /// Open (or create) a SQLite database at the given path and run migrations.
-    pub fn open(db_path: &Path) -> Result<Self> {
+    pub async fn open(db_path: &Path) -> Result<Self> {
         // Ensure parent directory exists
         if let Some(parent) = db_path.parent() {
-            std::fs::create_dir_all(parent)?;
+            tokio::fs::create_dir_all(parent).await?;
         }
 
         info!("Opening database at {}", db_path.display());
-        let conn = Connection::open(db_path)?;
 
-        // Enable WAL mode for better concurrency
-        conn.execute_batch("PRAGMA journal_mode=WAL;")?;
-        conn.execute_batch("PRAGMA foreign_keys=ON;")?;
+        let options = SqliteConnectOptions::new()
+            .filename(db_path)
+            .create_if_missing(true)
+            .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+            .foreign_keys(true);
 
-        let db = Self {
-            conn: Mutex::new(conn),
-        };
-        db.run_migrations()?;
+        let pool = SqlitePoolOptions::new()
+            .max_connections(5)
+            .connect_with(options)
+            .await?;
+
+        let db = Self { pool };
+        db.run_migrations().await?;
         Ok(db)
     }
 
-    /// Open an in-memory database (useful for testing)
-    pub fn open_memory() -> Result<Self> {
-        let conn = Connection::open_in_memory()?;
-        conn.execute_batch("PRAGMA foreign_keys=ON;")?;
-        let db = Self {
-            conn: Mutex::new(conn),
-        };
-        db.run_migrations()?;
+    /// Open an in-memory database (useful for testing).
+    pub async fn open_memory() -> Result<Self> {
+        let options = SqliteConnectOptions::new()
+            .filename(":memory:")
+            .foreign_keys(true);
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await?;
+
+        let db = Self { pool };
+        db.run_migrations().await?;
         Ok(db)
     }
 
-    /// Run all pending migrations
-    fn run_migrations(&self) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
-
+    /// Run all pending migrations.
+    async fn run_migrations(&self) -> Result<()> {
         // Create a migrations tracking table
-        conn.execute_batch(
+        sqlx::query(
             "CREATE TABLE IF NOT EXISTS _migrations (
                 name TEXT PRIMARY KEY,
                 applied_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
             );",
-        )?;
+        )
+        .execute(&self.pool)
+        .await?;
 
         // Collect migration files (compiled into the binary)
         let migrations: &[(&str, &str)] = &[
@@ -70,16 +78,14 @@ impl Database {
         ];
 
         for (name, sql) in migrations {
-            let already_applied: bool = conn
-                .query_row(
-                    "SELECT COUNT(*) FROM _migrations WHERE name = ?1",
-                    rusqlite::params![name],
-                    |row| {
-                        let count: i64 = row.get(0)?;
-                        Ok(count > 0)
-                    },
-                )
-                .unwrap_or(false);
+            let already_applied: bool = sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) FROM _migrations WHERE name = ?1",
+            )
+            .bind(name)
+            .fetch_one(&self.pool)
+            .await
+            .map(|count| count > 0)
+            .unwrap_or(false);
 
             if already_applied {
                 debug!("Migration {} already applied, skipping", name);
@@ -87,14 +93,17 @@ impl Database {
             }
 
             info!("Applying migration: {}", name);
-            conn.execute_batch(sql).map_err(|e| Error::MigrationFailed {
-                reason: format!("{}: {}", name, e),
-            })?;
+            sqlx::query(sql)
+                .execute(&self.pool)
+                .await
+                .map_err(|e| Error::MigrationFailed {
+                    reason: format!("{}: {}", name, e),
+                })?;
 
-            conn.execute(
-                "INSERT INTO _migrations (name) VALUES (?1)",
-                rusqlite::params![name],
-            )?;
+            sqlx::query("INSERT OR IGNORE INTO _migrations (name) VALUES (?1)")
+                .bind(name)
+                .execute(&self.pool)
+                .await?;
 
             info!("Migration {} applied successfully", name);
         }
@@ -102,16 +111,9 @@ impl Database {
         Ok(())
     }
 
-    /// Execute a synchronous operation on the database connection.
-    ///
-    /// The closure receives a `&Connection` reference and the lock is held
-    /// for the duration of the closure.
-    pub fn with_conn<F, R>(&self, f: F) -> Result<R>
-    where
-        F: FnOnce(&Connection) -> Result<R>,
-    {
-        let conn = self.conn.lock().unwrap();
-        f(&conn)
+    /// Get a reference to the underlying connection pool.
+    pub fn pool(&self) -> &SqlitePool {
+        &self.pool
     }
 }
 

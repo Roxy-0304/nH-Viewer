@@ -1,0 +1,24 @@
+# Rustfmt 配置文件
+# https://rust-lang.github.io/rustfmt/
+
+# 最大行宽
+max_width = 100
+
+# 缩进空格数
+tab_spaces = 4
+
+# 导入排序
+imports_granularity = "Crate"
+
+# 模块内空行
+blank_lines_upper_bound = 1
+blank_lines_lower_bound = 0
+
+# 链式调用格式化
+chain_width = 60
+
+# 结构体格式化
+struct_lit_width = 18
+
+# 数组格式化
+array_width = 60

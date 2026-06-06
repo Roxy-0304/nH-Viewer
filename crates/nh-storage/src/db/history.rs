@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection};
+use sqlx::SqlitePool;
 
 use crate::error::Result;
 
@@ -16,80 +16,93 @@ pub struct HistoryEntry {
 }
 
 /// Insert a new history entry
-pub fn insert(
-    conn: &Connection,
+pub async fn insert(
+    pool: &SqlitePool,
     gallery_id: i64,
     title: &str,
     cover_path: Option<&str>,
     page: u32,
 ) -> Result<i64> {
-    conn.execute(
+    let result = sqlx::query(
         "INSERT INTO history (gallery_id, title, cover_path, page) VALUES (?1, ?2, ?3, ?4)",
-        params![gallery_id, title, cover_path, page],
-    )?;
-    Ok(conn.last_insert_rowid())
+    )
+    .bind(gallery_id)
+    .bind(title)
+    .bind(cover_path)
+    .bind(page as i64)
+    .execute(pool)
+    .await?;
+    Ok(result.last_insert_rowid())
 }
 
 /// Get history entries, most recent first
-pub fn list(conn: &Connection, limit: u32, offset: u32) -> Result<Vec<HistoryEntry>> {
-    let mut stmt = conn.prepare(
+pub async fn list(pool: &SqlitePool, limit: u32, offset: u32) -> Result<Vec<HistoryEntry>> {
+    let rows = sqlx::query_as::<_, (i64, i64, String, Option<String>, i64, i64)>(
         "SELECT id, gallery_id, title, cover_path, viewed_at, page
          FROM history ORDER BY viewed_at DESC LIMIT ?1 OFFSET ?2",
-    )?;
-    let rows = stmt.query_map(params![limit, offset], |row| {
-        Ok(HistoryEntry {
-            id: row.get(0)?,
-            gallery_id: row.get(1)?,
-            title: row.get(2)?,
-            cover_path: row.get(3)?,
-            viewed_at: row.get(4)?,
-            page: row.get(5)?,
+    )
+    .bind(limit as i64)
+    .bind(offset as i64)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| HistoryEntry {
+            id: r.0,
+            gallery_id: r.1,
+            title: r.2,
+            cover_path: r.3,
+            viewed_at: r.4,
+            page: r.5 as u32,
         })
-    })?;
-    let mut entries = Vec::new();
-    for row in rows {
-        entries.push(row?);
-    }
-    Ok(entries)
+        .collect())
 }
 
 /// Get history entries for a specific gallery
-pub fn by_gallery_id(conn: &Connection, gallery_id: i64) -> Result<Vec<HistoryEntry>> {
-    let mut stmt = conn.prepare(
+pub async fn by_gallery_id(pool: &SqlitePool, gallery_id: i64) -> Result<Vec<HistoryEntry>> {
+    let rows = sqlx::query_as::<_, (i64, i64, String, Option<String>, i64, i64)>(
         "SELECT id, gallery_id, title, cover_path, viewed_at, page
          FROM history WHERE gallery_id = ?1 ORDER BY viewed_at DESC",
-    )?;
-    let rows = stmt.query_map(params![gallery_id], |row| {
-        Ok(HistoryEntry {
-            id: row.get(0)?,
-            gallery_id: row.get(1)?,
-            title: row.get(2)?,
-            cover_path: row.get(3)?,
-            viewed_at: row.get(4)?,
-            page: row.get(5)?,
+    )
+    .bind(gallery_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| HistoryEntry {
+            id: r.0,
+            gallery_id: r.1,
+            title: r.2,
+            cover_path: r.3,
+            viewed_at: r.4,
+            page: r.5 as u32,
         })
-    })?;
-    let mut entries = Vec::new();
-    for row in rows {
-        entries.push(row?);
-    }
-    Ok(entries)
+        .collect())
 }
 
 /// Delete a specific history entry by id
-pub fn delete(conn: &Connection, id: i64) -> Result<bool> {
-    let count = conn.execute("DELETE FROM history WHERE id = ?1", params![id])?;
-    Ok(count > 0)
+pub async fn delete(pool: &SqlitePool, id: i64) -> Result<bool> {
+    let result = sqlx::query("DELETE FROM history WHERE id = ?1")
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(result.rows_affected() > 0)
 }
 
 /// Clear all history
-pub fn clear(conn: &Connection) -> Result<usize> {
-    let count = conn.execute("DELETE FROM history", [])?;
-    Ok(count)
+pub async fn clear(pool: &SqlitePool) -> Result<usize> {
+    let result = sqlx::query("DELETE FROM history")
+        .execute(pool)
+        .await?;
+    Ok(result.rows_affected() as usize)
 }
 
 /// Get total history count
-pub fn count(conn: &Connection) -> Result<u64> {
-    let count: i64 = conn.query_row("SELECT COUNT(*) FROM history", [], |row| row.get(0))?;
+pub async fn count(pool: &SqlitePool) -> Result<u64> {
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM history")
+        .fetch_one(pool)
+        .await?;
     Ok(count as u64)
 }

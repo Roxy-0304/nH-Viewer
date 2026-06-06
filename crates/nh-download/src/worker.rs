@@ -4,6 +4,8 @@ use reqwest::Client;
 use tokio::sync::watch;
 use tracing::{debug, error, info};
 
+use nh_api::CdnConfig;
+
 use crate::chunked::ChunkDownloader;
 use crate::progress::DynReporter;
 use crate::queue::DownloadQueue;
@@ -29,6 +31,8 @@ impl WorkerPool {
         queue: DownloadQueue,
         reporter: DynReporter,
         download_dir: std::path::PathBuf,
+        proxy: Option<reqwest::Proxy>,
+        cdn_config: CdnConfig,
     ) -> Self {
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
         let mut workers = Vec::with_capacity(concurrency);
@@ -38,15 +42,21 @@ impl WorkerPool {
             let reporter = Arc::clone(&reporter);
             let mut rx = shutdown_rx.clone();
             let dir = download_dir.clone();
+            let proxy = proxy.clone();
 
             // Each worker gets its own reqwest Client (independent connection pool)
-            let client = Client::builder()
+            let mut builder = Client::builder()
                 .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-                .timeout(std::time::Duration::from_secs(120))
+                .timeout(std::time::Duration::from_secs(120));
+            if let Some(p) = proxy {
+                builder = builder.proxy(p);
+            }
+            let client = builder
                 .build()
                 .expect("failed to build worker HTTP client");
 
             let downloader = ChunkDownloader::new(client);
+            let cdn = cdn_config.clone();
 
             let handle = tokio::spawn(async move {
                 info!(worker_id, "worker started");
@@ -95,18 +105,11 @@ impl WorkerPool {
                         .join(task.gallery_id.to_string())
                         .join(format!("{}.{}", task.page, task.ext));
 
-                    // Build the download URL from task info
-                    // Uses the CDN server index from the task
-                    let url = nh_api::image_url::get_image_url(
-                        // We need a CdnConfig reference here, but we don't have one
-                        // The URL should be pre-computed and stored in the task.
-                        // For now, construct it from the media_id using default CDN.
-                        // In a real implementation, the task would carry the full URL.
-                        &nh_api::CdnConfig::default(),
-                        &task.media_id,
-                        task.page,
-                        &task.ext,
-                        task.server_index,
+                    // Build the download URL from CDN config + path stored in task
+                    let url = format!(
+                        "{}{}",
+                        cdn.image_server(task.server_index),
+                        task.path
                     );
 
                     // Check if file already exists (cache hit)
@@ -118,7 +121,8 @@ impl WorkerPool {
                     }
 
                     // Perform the download
-                    match downloader.download(&url, &dest_path, &reporter, task.id).await {
+                    let reporter_ref: &dyn crate::progress::ProgressReporter = &*reporter;
+                    match downloader.download(&url, &dest_path, reporter_ref, task.id).await {
                         Ok(bytes) => {
                             debug!(
                                 worker_id,

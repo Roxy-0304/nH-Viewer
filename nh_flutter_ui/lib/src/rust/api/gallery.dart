@@ -6,23 +6,28 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `api_client`, `cached_to_info`, `gallery_to_info`, `preview_to_info`, `storage`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `fmt`, `fmt`
+// These functions are ignored because they are not marked as `pub`: `api_client`, `gallery_detail_to_info`, `gallery_list_to_preview`, `storage`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`
+// These functions are ignored (category: IgnoreBecauseExplicitAttribute): `init_bridge_with_config`
 
 /// Initialise the bridge layer — call once from Dart during app startup.
 Future<void> initBridge({required Storage storage}) =>
     RustLib.instance.api.crateApiGalleryInitBridge(storage: storage);
 
-/// Fetch a gallery by ID.
-///
-/// Strategy: look in local cache first; on miss, fetch from the remote API
-/// and persist the result for next time.
+Future<void> nhSetApiKey({required String apiKey}) =>
+    RustLib.instance.api.crateApiGalleryNhSetApiKey(apiKey: apiKey);
+
+Future<String> nhGetApiKey() =>
+    RustLib.instance.api.crateApiGalleryNhGetApiKey();
+
+/// Warm up the connection by visiting the main page.
+Future<int> nhWarmUp() => RustLib.instance.api.crateApiGalleryNhWarmUp();
+
+/// Fetch a gallery by ID (cache-first strategy).
 Future<GalleryInfo> nhGetGallery({required BigInt id}) =>
     RustLib.instance.api.crateApiGalleryNhGetGallery(id: id);
 
 /// Search galleries by query string.
-///
-/// Fetches results from the remote API.
 Future<List<GalleryPreviewInfo>> nhSearchGalleries({
   required String query,
   required int page,
@@ -30,6 +35,14 @@ Future<List<GalleryPreviewInfo>> nhSearchGalleries({
   query: query,
   page: page,
 );
+
+/// Get popular galleries.
+Future<List<GalleryPreviewInfo>> nhGetPopular() =>
+    RustLib.instance.api.crateApiGalleryNhGetPopular();
+
+/// Get a random gallery ID.
+Future<BigInt> nhGetRandom() =>
+    RustLib.instance.api.crateApiGalleryNhGetRandom();
 
 // Rust type: RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<Storage>>
 abstract class Storage implements RustOpaqueInterface {}
@@ -43,9 +56,9 @@ class GalleryInfo {
   final String? titlePretty;
   final int numPages;
   final int numFavorites;
-  final String? coverExt;
   final String? coverUrl;
   final String? thumbnailUrl;
+  final List<TagInfo> tags;
 
   const GalleryInfo({
     required this.id,
@@ -55,9 +68,9 @@ class GalleryInfo {
     this.titlePretty,
     required this.numPages,
     required this.numFavorites,
-    this.coverExt,
     this.coverUrl,
     this.thumbnailUrl,
+    required this.tags,
   });
 
   @override
@@ -69,9 +82,9 @@ class GalleryInfo {
       titlePretty.hashCode ^
       numPages.hashCode ^
       numFavorites.hashCode ^
-      coverExt.hashCode ^
       coverUrl.hashCode ^
-      thumbnailUrl.hashCode;
+      thumbnailUrl.hashCode ^
+      tags.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -85,9 +98,9 @@ class GalleryInfo {
           titlePretty == other.titlePretty &&
           numPages == other.numPages &&
           numFavorites == other.numFavorites &&
-          coverExt == other.coverExt &&
           coverUrl == other.coverUrl &&
-          thumbnailUrl == other.thumbnailUrl;
+          thumbnailUrl == other.thumbnailUrl &&
+          tags == other.tags;
 }
 
 /// Lightweight preview for list views.
@@ -95,24 +108,18 @@ class GalleryPreviewInfo {
   final BigInt id;
   final String title;
   final int numPages;
-  final String? coverExt;
   final String? coverUrl;
 
   const GalleryPreviewInfo({
     required this.id,
     required this.title,
     required this.numPages,
-    this.coverExt,
     this.coverUrl,
   });
 
   @override
   int get hashCode =>
-      id.hashCode ^
-      title.hashCode ^
-      numPages.hashCode ^
-      coverExt.hashCode ^
-      coverUrl.hashCode;
+      id.hashCode ^ title.hashCode ^ numPages.hashCode ^ coverUrl.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -122,6 +129,41 @@ class GalleryPreviewInfo {
           id == other.id &&
           title == other.title &&
           numPages == other.numPages &&
-          coverExt == other.coverExt &&
           coverUrl == other.coverUrl;
+}
+
+/// Tag info for Dart.
+class TagInfo {
+  final BigInt id;
+  final String tagType;
+  final String name;
+  final String url;
+  final BigInt count;
+
+  const TagInfo({
+    required this.id,
+    required this.tagType,
+    required this.name,
+    required this.url,
+    required this.count,
+  });
+
+  @override
+  int get hashCode =>
+      id.hashCode ^
+      tagType.hashCode ^
+      name.hashCode ^
+      url.hashCode ^
+      count.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TagInfo &&
+          runtimeType == other.runtimeType &&
+          id == other.id &&
+          tagType == other.tagType &&
+          name == other.name &&
+          url == other.url &&
+          count == other.count;
 }

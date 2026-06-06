@@ -6,9 +6,9 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Comprehensive error type for nh-storage
 #[derive(Debug, Error)]
 pub enum Error {
-    /// SQLite database error
+    /// SQLite database error (via sqlx)
     #[error("SQLite error: {0}")]
-    Sqlite(#[from] rusqlite::Error),
+    Sqlite(#[from] sqlx::Error),
 
     /// Filesystem I/O error
     #[error("I/O error: {0}")]

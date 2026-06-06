@@ -38,6 +38,12 @@ dependencies:
     path: rust_builder
   flutter_rust_bridge: 2.12.0
 
+  # State management
+  flutter_riverpod: ^2.6.1
+
+  # Local persistence
+  shared_preferences: ^2.3.4
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
