@@ -138,8 +138,7 @@ impl ChunkDownloader {
         else if total_bytes > 0 && existing_bytes > total_bytes {
             warn!(
                 existing_bytes,
-                total_bytes,
-                ".tmp is larger than expected, deleting and re-downloading"
+                total_bytes, ".tmp is larger than expected, deleting and re-downloading"
             );
             let _ = fs::remove_file(&tmp_path).await;
             // fall through

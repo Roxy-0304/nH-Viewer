@@ -216,7 +216,7 @@ class GalleryPreviewCard extends StatelessWidget {
                   width: 48,
                   height: 64,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) =>
+                  errorBuilder: (_, _, _) =>
                       const Icon(Icons.broken_image, size: 40),
                 ),
               )
@@ -298,7 +298,7 @@ class GalleryDetailScreen extends ConsumerWidget {
                   gallery.coverUrl!,
                   height: 300,
                   fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => Container(
+                  errorBuilder: (_, _, _) => Container(
                     height: 300,
                     width: double.infinity,
                     color: Colors.grey[800],

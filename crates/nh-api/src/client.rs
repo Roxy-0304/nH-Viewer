@@ -59,7 +59,14 @@ fn detect_system_proxy() -> Option<String> {
     #[cfg(not(windows))]
     {
         // Check standard environment variables
-        for var in &["HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"] {
+        for var in &[
+            "HTTP_PROXY",
+            "http_proxy",
+            "HTTPS_PROXY",
+            "https_proxy",
+            "ALL_PROXY",
+            "all_proxy",
+        ] {
             if let Ok(val) = std::env::var(var) {
                 let val = val.trim().to_string();
                 if !val.is_empty() {

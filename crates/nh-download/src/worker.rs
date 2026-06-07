@@ -181,7 +181,14 @@ impl WorkerPool {
                             error = %last_err,
                             "download failed on all CDN servers"
                         );
-                        q.fail(task.id, format!("All {} CDN servers failed. Last error: {}", num_servers, last_err)).await;
+                        q.fail(
+                            task.id,
+                            format!(
+                                "All {} CDN servers failed. Last error: {}",
+                                num_servers, last_err
+                            ),
+                        )
+                        .await;
                         reporter.on_error(task.id, &last_err);
                     }
                 }

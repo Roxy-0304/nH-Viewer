@@ -301,7 +301,10 @@ type JsonResp = (StatusCode, Json<ApiResponse<serde_json::Value>>);
 fn err_response(msg: String) -> JsonResp {
     (
         StatusCode::SERVICE_UNAVAILABLE,
-        Json(ApiResponse::<serde_json::Value>::err(msg, std::time::Duration::ZERO)),
+        Json(ApiResponse::<serde_json::Value>::err(
+            msg,
+            std::time::Duration::ZERO,
+        )),
     )
 }
 
@@ -379,7 +382,10 @@ async fn handle_warm_up(State(state): State<AppState>) -> JsonResp {
     match result {
         Ok(status) => (
             StatusCode::OK,
-            Json(ApiResponse::ok(serde_json::json!({ "status": status }), elapsed)),
+            Json(ApiResponse::ok(
+                serde_json::json!({ "status": status }),
+                elapsed,
+            )),
         ),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -401,7 +407,10 @@ async fn handle_get_gallery(
     match result {
         Ok(gallery) => (
             StatusCode::OK,
-            Json(ApiResponse::ok(serde_json::to_value(&gallery).unwrap(), elapsed)),
+            Json(ApiResponse::ok(
+                serde_json::to_value(&gallery).unwrap(),
+                elapsed,
+            )),
         ),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -423,7 +432,10 @@ async fn handle_search(
     match result {
         Ok(resp) => (
             StatusCode::OK,
-            Json(ApiResponse::ok(serde_json::to_value(&resp).unwrap(), elapsed)),
+            Json(ApiResponse::ok(
+                serde_json::to_value(&resp).unwrap(),
+                elapsed,
+            )),
         ),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -441,7 +453,10 @@ async fn handle_popular(State(state): State<AppState>) -> JsonResp {
     match result {
         Ok(list) => (
             StatusCode::OK,
-            Json(ApiResponse::ok(serde_json::to_value(&list).unwrap(), elapsed)),
+            Json(ApiResponse::ok(
+                serde_json::to_value(&list).unwrap(),
+                elapsed,
+            )),
         ),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -480,7 +495,10 @@ async fn handle_related(
     match result {
         Ok(resp) => (
             StatusCode::OK,
-            Json(ApiResponse::ok(serde_json::to_value(&resp).unwrap(), elapsed)),
+            Json(ApiResponse::ok(
+                serde_json::to_value(&resp).unwrap(),
+                elapsed,
+            )),
         ),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -498,12 +516,18 @@ async fn handle_tagged(
         Err(e) => return err_response(e),
     };
     let sort = parse_sort(&q.sort);
-    let (result, elapsed) =
-        timed!(client.get_galleries_tagged(q.tag_id, sort, q.page, q.per_page).await);
+    let (result, elapsed) = timed!(
+        client
+            .get_galleries_tagged(q.tag_id, sort, q.page, q.per_page)
+            .await
+    );
     match result {
         Ok(resp) => (
             StatusCode::OK,
-            Json(ApiResponse::ok(serde_json::to_value(&resp).unwrap(), elapsed)),
+            Json(ApiResponse::ok(
+                serde_json::to_value(&resp).unwrap(),
+                elapsed,
+            )),
         ),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -524,7 +548,10 @@ async fn handle_favorites(
     match result {
         Ok(resp) => (
             StatusCode::OK,
-            Json(ApiResponse::ok(serde_json::to_value(&resp).unwrap(), elapsed)),
+            Json(ApiResponse::ok(
+                serde_json::to_value(&resp).unwrap(),
+                elapsed,
+            )),
         ),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -545,7 +572,10 @@ async fn handle_add_favorite(
     match result {
         Ok(resp) => (
             StatusCode::OK,
-            Json(ApiResponse::ok(serde_json::to_value(&resp).unwrap(), elapsed)),
+            Json(ApiResponse::ok(
+                serde_json::to_value(&resp).unwrap(),
+                elapsed,
+            )),
         ),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -566,7 +596,10 @@ async fn handle_remove_favorite(
     match result {
         Ok(resp) => (
             StatusCode::OK,
-            Json(ApiResponse::ok(serde_json::to_value(&resp).unwrap(), elapsed)),
+            Json(ApiResponse::ok(
+                serde_json::to_value(&resp).unwrap(),
+                elapsed,
+            )),
         ),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -592,7 +625,10 @@ async fn handle_tag_ids(
     match result {
         Ok(tags) => (
             StatusCode::OK,
-            Json(ApiResponse::ok(serde_json::to_value(&tags).unwrap(), elapsed)),
+            Json(ApiResponse::ok(
+                serde_json::to_value(&tags).unwrap(),
+                elapsed,
+            )),
         ),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -610,12 +646,18 @@ async fn handle_tag_type(
         Err(e) => return err_response(e),
     };
     let sort = parse_tag_sort(&q.sort);
-    let (result, elapsed) =
-        timed!(client.get_tags_by_type(&q.tag_type, sort, q.page, q.per_page).await);
+    let (result, elapsed) = timed!(
+        client
+            .get_tags_by_type(&q.tag_type, sort, q.page, q.per_page)
+            .await
+    );
     match result {
         Ok(resp) => (
             StatusCode::OK,
-            Json(ApiResponse::ok(serde_json::to_value(&resp).unwrap(), elapsed)),
+            Json(ApiResponse::ok(
+                serde_json::to_value(&resp).unwrap(),
+                elapsed,
+            )),
         ),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -633,7 +675,10 @@ async fn handle_cdn_config(State(state): State<AppState>) -> JsonResp {
     match result {
         Ok(cdn) => (
             StatusCode::OK,
-            Json(ApiResponse::ok(serde_json::to_value(&cdn).unwrap(), elapsed)),
+            Json(ApiResponse::ok(
+                serde_json::to_value(&cdn).unwrap(),
+                elapsed,
+            )),
         ),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -655,7 +700,10 @@ async fn handle_download_url(
     match result {
         Ok(resp) => (
             StatusCode::OK,
-            Json(ApiResponse::ok(serde_json::to_value(&resp).unwrap(), elapsed)),
+            Json(ApiResponse::ok(
+                serde_json::to_value(&resp).unwrap(),
+                elapsed,
+            )),
         ),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -676,7 +724,10 @@ async fn handle_galleries(
     match result {
         Ok(resp) => (
             StatusCode::OK,
-            Json(ApiResponse::ok(serde_json::to_value(&resp).unwrap(), elapsed)),
+            Json(ApiResponse::ok(
+                serde_json::to_value(&resp).unwrap(),
+                elapsed,
+            )),
         ),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -705,7 +756,10 @@ async fn handle_history(
     match result {
         Ok(entries) => (
             StatusCode::OK,
-            Json(ApiResponse::ok(serde_json::to_value(&entries).unwrap(), elapsed)),
+            Json(ApiResponse::ok(
+                serde_json::to_value(&entries).unwrap(),
+                elapsed,
+            )),
         ),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -727,7 +781,10 @@ async fn handle_search_history(State(state): State<AppState>) -> JsonResp {
     match result {
         Ok(entries) => (
             StatusCode::OK,
-            Json(ApiResponse::ok(serde_json::to_value(&entries).unwrap(), elapsed)),
+            Json(ApiResponse::ok(
+                serde_json::to_value(&entries).unwrap(),
+                elapsed,
+            )),
         ),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -748,12 +805,14 @@ async fn handle_local_favorites(
     let storage = dl.storage();
     let pool = storage.db().pool();
     let offset = (q.page.saturating_sub(1)) * q.per_page;
-    let (result, elapsed) =
-        timed!(nh_storage::db::favorites::list(pool, q.per_page, offset).await);
+    let (result, elapsed) = timed!(nh_storage::db::favorites::list(pool, q.per_page, offset).await);
     match result {
         Ok(entries) => (
             StatusCode::OK,
-            Json(ApiResponse::ok(serde_json::to_value(&entries).unwrap(), elapsed)),
+            Json(ApiResponse::ok(
+                serde_json::to_value(&entries).unwrap(),
+                elapsed,
+            )),
         ),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -819,7 +878,10 @@ async fn handle_download_pause(
     let (result, elapsed) = timed!(dl.pause(q.id).await);
     (
         StatusCode::OK,
-        Json(ApiResponse::ok(serde_json::json!({ "paused": result }), elapsed)),
+        Json(ApiResponse::ok(
+            serde_json::json!({ "paused": result }),
+            elapsed,
+        )),
     )
 }
 
@@ -835,7 +897,10 @@ async fn handle_download_resume(
     let (result, elapsed) = timed!(dl.resume(q.id).await);
     (
         StatusCode::OK,
-        Json(ApiResponse::ok(serde_json::json!({ "resumed": result }), elapsed)),
+        Json(ApiResponse::ok(
+            serde_json::json!({ "resumed": result }),
+            elapsed,
+        )),
     )
 }
 
@@ -851,7 +916,10 @@ async fn handle_download_cancel(
     let (result, elapsed) = timed!(dl.cancel(q.id).await);
     (
         StatusCode::OK,
-        Json(ApiResponse::ok(serde_json::json!({ "cancelled": result }), elapsed)),
+        Json(ApiResponse::ok(
+            serde_json::json!({ "cancelled": result }),
+            elapsed,
+        )),
     )
 }
 
@@ -864,7 +932,10 @@ async fn handle_download_cancel_all(State(state): State<AppState>) -> JsonResp {
     let (_result, elapsed) = timed!(dl.cancel_all_and_clear().await);
     (
         StatusCode::OK,
-        Json(ApiResponse::ok(serde_json::json!({ "cancelled_all": true, "queue_cleared": true }), elapsed)),
+        Json(ApiResponse::ok(
+            serde_json::json!({ "cancelled_all": true, "queue_cleared": true }),
+            elapsed,
+        )),
     )
 }
 
