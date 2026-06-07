@@ -21,3 +21,7 @@ futures = "0.3"
 # Optional: tracing for debug
 tracing = "0.1"
 
+# Windows registry for system proxy detection
+[target.'cfg(windows)'.dependencies]
+winreg = "0.55"
+

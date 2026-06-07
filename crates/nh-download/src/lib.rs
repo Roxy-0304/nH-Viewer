@@ -195,7 +195,8 @@ impl DownloadManager {
     ///    image types) and construct a download URL and local save path
     ///    for every page.
     /// 3. Enqueue each page as a separate [`DownloadTask`] into the
-    ///    `DownloadQueue`.
+    ///    `DownloadQueue` (skipping pages whose final file already exists
+    ///    on disk, and deduplicating against in-flight tasks).
     /// 4. Ensure the `WorkerPool` is running so workers can start
     ///    consuming tasks immediately.
     pub async fn submit_gallery_download(&self, gallery_id: u64) -> anyhow::Result<()> {
@@ -240,7 +241,7 @@ impl DownloadManager {
         let num_servers = cdn.image_servers.len().max(1);
 
         // Save path base: {download_dir}/{gallery_id}/
-        let _gallery_dir = self.download_dir.join(gallery_id.to_string());
+        let gallery_dir = self.download_dir.join(gallery_id.to_string());
 
         info!(
             gallery_id,
@@ -250,6 +251,7 @@ impl DownloadManager {
         );
 
         // ---- Step 3: Enqueue every page ----
+        let mut skipped = 0u32;
         for page in 1..=gallery.num_pages {
             let page_info = gallery.pages.get((page - 1) as usize);
             let ext = page_info
@@ -259,6 +261,16 @@ impl DownloadManager {
             let path = page_info
                 .map(|p| p.path.clone())
                 .unwrap_or_else(|| format!("/galleries/{}/{}.{}", gallery.media_id, page, ext));
+
+            // Skip pages whose final file already exists on disk.
+            let dest = gallery_dir.join(format!("{}.{}", page, ext));
+            if let Ok(meta) = tokio::fs::metadata(&dest).await {
+                if meta.len() > 0 {
+                    debug!(gallery_id, page, "file already exists, skipping enqueue");
+                    skipped += 1;
+                    continue;
+                }
+            }
 
             let server_index = (page as usize) % num_servers;
 
@@ -281,15 +293,10 @@ impl DownloadManager {
         info!(
             gallery_id,
             pages = gallery.num_pages,
+            skipped,
             "gallery download submitted"
         );
 
-        // ---- Step 4: Ensure workers are running ----
-        // We need interior mutability to call start() from &self.
-        // Since start() is called on the mutable path only, and the
-        // queue is already Arc-wrapped, we use a simple check here.
-        // In practice, callers should call start() before submitting.
-        // This is a safety net.
         debug!("queue now has tasks; ensure start(concurrency) has been called");
 
         Ok(())
@@ -358,6 +365,11 @@ impl DownloadManager {
     /// Cancel all tasks.
     pub async fn cancel_all(&self) {
         self.queue.cancel_all().await;
+    }
+
+    /// Cancel all tasks and remove them from the queue entirely.
+    pub async fn cancel_all_and_clear(&self) {
+        self.queue.clear().await;
     }
 
     /// Get a snapshot of all tasks.

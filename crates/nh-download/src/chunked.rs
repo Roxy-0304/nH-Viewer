@@ -112,26 +112,84 @@ impl ChunkDownloader {
     ) -> Result<u64> {
         let tmp_path = dest_path.with_extension("tmp");
 
-        // Check existing partial download
+        // Probe total size with a HEAD request first
+        let total_bytes = self.probe_size(url).await?;
+
+        // ---- Resume validation (方案 B) ----
+        let existing_bytes = if tmp_path.exists() {
+            let meta = fs::metadata(&tmp_path).await.map(|m| m.len()).unwrap_or(0);
+            meta
+        } else {
+            0
+        };
+
+        debug!(url, total_bytes, existing_bytes, "download started");
+
+        // Case: total_bytes == 0 (HEAD failed or server doesn't report size)
+        if total_bytes == 0 && existing_bytes > 0 {
+            warn!(
+                tmp_path = %tmp_path.display(),
+                "cannot validate .tmp (total_bytes unknown), deleting and re-downloading"
+            );
+            let _ = fs::remove_file(&tmp_path).await;
+            // fall through to fresh download with existing_bytes = 0
+        }
+        // Case: .tmp is larger than server reports → stale or corrupt
+        else if total_bytes > 0 && existing_bytes > total_bytes {
+            warn!(
+                existing_bytes,
+                total_bytes,
+                ".tmp is larger than expected, deleting and re-downloading"
+            );
+            let _ = fs::remove_file(&tmp_path).await;
+            // fall through
+        }
+        // Case: sizes match → likely complete
+        else if total_bytes > 0 && existing_bytes == total_bytes {
+            // Additional check: if the .tmp file is older than 7 days, treat it
+            // as stale (the remote file may have changed).
+            let stale = fs::metadata(&tmp_path)
+                .await
+                .ok()
+                .and_then(|m| m.modified().ok())
+                .and_then(|t| t.elapsed().ok())
+                .map(|d| d > Duration::from_secs(7 * 24 * 3600))
+                .unwrap_or(true); // if we can't read mtime, treat as stale
+
+            if stale {
+                warn!(
+                    tmp_path = %tmp_path.display(),
+                    ".tmp is old (>7d) or mtime unavailable, deleting and re-downloading"
+                );
+                let _ = fs::remove_file(&tmp_path).await;
+            } else {
+                // Looks good — rename to final
+                debug!("complete .tmp found, renaming to final");
+                fs::rename(&tmp_path, dest_path).await?;
+                reporter.on_complete(task_id);
+                return Ok(total_bytes);
+            }
+        }
+        // Case: existing_bytes < total_bytes → normal resume (fall through)
+
+        // Re-read existing_bytes after possible deletion above
         let existing_bytes = if tmp_path.exists() {
             fs::metadata(&tmp_path).await.map(|m| m.len()).unwrap_or(0)
         } else {
             0
         };
 
-        // Probe total size with a HEAD request
-        let total_bytes = self.probe_size(url).await?;
-        debug!(url, total_bytes, existing_bytes, "download started");
-
-        // If we already have the complete file, skip
-        if existing_bytes >= total_bytes && total_bytes > 0 {
-            // Atomic rename from tmp to final
-            fs::rename(&tmp_path, dest_path).await?;
-            reporter.on_complete(task_id);
-            return Ok(total_bytes);
+        // Guard: if we still don't know the total size and there's nothing to
+        // resume, bail out rather than creating an empty file.
+        if total_bytes == 0 {
+            return Err(Error::ChunkFailed {
+                url: url.to_string(),
+                retries: 0,
+                reason: "server did not report Content-Length; cannot download".to_string(),
+            });
         }
 
-        // Open file in append mode
+        // Open file in append mode (resume) or create new
         let mut file = if existing_bytes > 0 {
             debug!(existing_bytes, "resuming download");
             OpenOptions::new().append(true).open(&tmp_path).await?

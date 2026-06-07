@@ -1,9 +1,10 @@
 use std::collections::VecDeque;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex, Notify};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use crate::error::Result;
 
@@ -62,6 +63,11 @@ pub struct DownloadTask {
     pub server_index: usize,
     /// CDN-relative path from the API (e.g. "/galleries/1234/1.jpg")
     pub path: String,
+    /// When this task was leased to a worker (for stale-task detection).
+    /// Not persisted — resets to `None` on queue restore.
+    #[serde(skip)]
+    #[serde(default)]
+    pub leased_at: Option<Instant>,
 }
 
 impl DownloadTask {
@@ -109,6 +115,10 @@ impl DownloadQueue {
     }
 
     /// Add a task to the queue. Returns the assigned task id.
+    ///
+    /// If a task for the same `(gallery_id, page)` already exists in a
+    /// non-terminal state, the duplicate is silently skipped and the
+    /// existing task id is returned.
     pub async fn add_task(
         &self,
         gallery_id: u64,
@@ -119,6 +129,21 @@ impl DownloadQueue {
         server_index: usize,
         path: String,
     ) -> u64 {
+        // ---- Deduplication ----
+        {
+            let queue = self.inner.lock().await;
+            if let Some(existing) = queue
+                .iter()
+                .find(|t| t.gallery_id == gallery_id && t.page == page && !t.is_terminal())
+            {
+                debug!(
+                    existing_id = existing.id,
+                    gallery_id, page, "duplicate task skipped"
+                );
+                return existing.id;
+            }
+        }
+
         let id = {
             let mut id_guard = self.next_id.lock().await;
             let id = *id_guard;
@@ -138,6 +163,7 @@ impl DownloadQueue {
             downloaded_bytes: 0,
             server_index,
             path,
+            leased_at: None,
         };
 
         self.insert_sorted(task).await;
@@ -156,8 +182,9 @@ impl DownloadQueue {
         queue.insert(pos, task);
     }
 
-    /// Get the next pending task (highest priority). Returns `None` if empty.
-    /// Blocks until a task is available or the queue is empty.
+    /// Get the next pending task (highest priority).
+    /// If no runnable tasks exist, waits for new tasks via notification.
+    /// Returns `None` only when a shutdown signal is received.
     pub async fn next(&self) -> Option<DownloadTask> {
         loop {
             {
@@ -165,19 +192,12 @@ impl DownloadQueue {
                 if let Some(pos) = queue.iter().position(|t| t.is_runnable()) {
                     let mut task = queue.remove(pos).unwrap();
                     task.state = TaskState::Downloading;
+                    task.leased_at = Some(Instant::now());
                     queue.push_front(task.clone());
                     return Some(task);
                 }
-
-                // If queue is empty, return None (no more tasks)
-                if queue
-                    .iter()
-                    .all(|t| t.is_terminal() || t.state == TaskState::Paused)
-                {
-                    return None;
-                }
             }
-            // Wait for a notification that new tasks are available
+            // No runnable tasks found — wait for notification that new tasks were added
             self.notify.notified().await;
         }
     }
@@ -298,6 +318,13 @@ impl DownloadQueue {
         }
     }
 
+    /// Remove all tasks from the queue (both active and terminal).
+    pub async fn clear(&self) {
+        let mut queue = self.inner.lock().await;
+        queue.clear();
+        info!("queue cleared");
+    }
+
     /// Serialize the queue state to JSON for persistence.
     pub async fn to_json(&self) -> String {
         let queue = self.inner.lock().await;
@@ -306,9 +333,18 @@ impl DownloadQueue {
     }
 
     /// Restore the queue from a JSON string.
+    /// Tasks that were in `Downloading` state are reset to `Pending`
+    /// (since no worker is actually processing them after a restart).
     pub async fn from_json(&self, json: &str) -> Result<()> {
-        let tasks: Vec<DownloadTask> = serde_json::from_str(json)?;
+        let mut tasks: Vec<DownloadTask> = serde_json::from_str(json)?;
         let max_id = tasks.iter().map(|t| t.id).max().unwrap_or(0);
+        // Reset in-progress tasks — they can't survive a restart.
+        for task in &mut tasks {
+            if task.state == TaskState::Downloading {
+                task.state = TaskState::Pending;
+            }
+            task.leased_at = None;
+        }
         let mut queue = self.inner.lock().await;
         queue.clear();
         for task in tasks {
@@ -319,6 +355,38 @@ impl DownloadQueue {
         self.notify.notify_one();
         info!(count = queue.len(), "queue restored from persistence");
         Ok(())
+    }
+
+    /// Reap stale leases: reset `Downloading` tasks whose lease has expired
+    /// back to `Pending` so another worker can pick them up.
+    ///
+    /// Called periodically by the worker-pool watchdog.
+    pub async fn reap_stale_leases(&self, lease_timeout: Duration) {
+        let mut queue = self.inner.lock().await;
+        let mut reaped = 0u32;
+        for task in queue.iter_mut() {
+            if task.state == TaskState::Downloading {
+                if let Some(leased_at) = task.leased_at {
+                    if leased_at.elapsed() > lease_timeout {
+                        warn!(
+                            task_id = task.id,
+                            gallery_id = task.gallery_id,
+                            page = task.page,
+                            elapsed_secs = leased_at.elapsed().as_secs(),
+                            "stale lease detected, resetting to Pending"
+                        );
+                        task.state = TaskState::Pending;
+                        task.leased_at = None;
+                        reaped += 1;
+                    }
+                }
+            }
+        }
+        if reaped > 0 {
+            drop(queue); // release lock before notifying
+            self.notify.notify_waiters();
+            info!(reaped, "stale leases reaped");
+        }
     }
 }
 

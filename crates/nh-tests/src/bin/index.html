@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>nH-Viewer API Test Console</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f1117;
+            color: #e1e4e8;
+            padding: 20px;
+            line-height: 1.5;
+        }
+        h1 { text-align: center; margin-bottom: 8px; color: #58a6ff; font-size: 1.8em; }
+        .subtitle { text-align: center; color: #8b949e; margin-bottom: 24px; font-size: 0.9em; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 16px; max-width: 1400px; margin: 0 auto; }
+        .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; transition: border-color 0.2s; }
+        .card:hover { border-color: #58a6ff; }
+        .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+        .card-title { font-size: 1em; font-weight: 600; color: #c9d1d9; }
+        .method-badge { font-size: 0.7em; padding: 2px 8px; border-radius: 4px; font-weight: 700; font-family: monospace; }
+        .method-get { background: #1f6feb33; color: #58a6ff; }
+        .method-post { background: #23863633; color: #3fb950; }
+        .params { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+        .params input, .params select { flex: 1; min-width: 100px; padding: 6px 10px; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #e1e4e8; font-size: 0.85em; outline: none; }
+        .params input:focus, .params select:focus { border-color: #58a6ff; }
+        .params label { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 100px; font-size: 0.75em; color: #8b949e; }
+        .btn { padding: 8px 16px; border: 1px solid #30363d; border-radius: 6px; background: #21262d; color: #c9d1d9; cursor: pointer; font-size: 0.85em; transition: all 0.15s; width: 100%; }
+        .btn:hover { background: #30363d; border-color: #8b949e; }
+        .btn:active { background: #388bfd33; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn.loading { animation: pulse 1s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+        .result-box { margin-top: 10px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; max-height: 300px; overflow: auto; display: none; }
+        .result-box.show { display: block; }
+        .result-meta { padding: 6px 10px; font-size: 0.75em; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; }
+        .result-meta .status-ok { color: #3fb950; }
+        .result-meta .status-err { color: #f85149; }
+        .result-meta .elapsed { color: #8b949e; }
+        pre { padding: 10px; font-size: 0.8em; white-space: pre-wrap; word-break: break-all; max-height: 240px; overflow: auto; color: #c9d1d9; font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace; }
+
+        /* Proxy bar */
+        .proxy-bar { max-width: 1400px; margin: 0 auto 16px; background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 14px 20px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .proxy-bar .label { font-size: 0.85em; color: #8b949e; }
+        .toggle-group { display: inline-flex; border: 1px solid #30363d; border-radius: 6px; overflow: hidden; }
+        .toggle-btn { padding: 6px 16px; background: #21262d; border: none; border-right: 1px solid #30363d; color: #8b949e; cursor: pointer; font-size: 0.82em; font-weight: 500; transition: all 0.15s; white-space: nowrap; }
+        .toggle-btn:last-child { border-right: none; }
+        .toggle-btn:hover { background: #30363d; color: #c9d1d9; }
+        .toggle-btn.active { background: #1f6feb33; color: #58a6ff; font-weight: 600; }
+        .custom-proxy-inline { display: inline-flex; align-items: center; gap: 0; overflow: hidden; border: 1px solid #30363d; border-radius: 6px; background: #21262d; max-width: 0; opacity: 0; transition: max-width 0.3s ease, opacity 0.2s ease; }
+        .custom-proxy-inline.expanded { max-width: 400px; opacity: 1; }
+        .custom-proxy-inline input { padding: 6px 10px; background: #0d1117; border: none; color: #e1e4e8; font-size: 0.82em; font-family: monospace; outline: none; width: 200px; }
+        .custom-proxy-inline button { padding: 6px 12px; background: #238636; border: none; border-left: 1px solid #30363d; color: #fff; cursor: pointer; font-size: 0.82em; font-weight: 600; white-space: nowrap; transition: background 0.15s; }
+        .custom-proxy-inline button:hover { background: #2ea043; }
+        .custom-proxy-inline button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .status-indicator { display: flex; align-items: center; gap: 6px; font-size: 0.8em; margin-left: auto; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; transition: background 0.2s; }
+
+        /* Tab navigation */
+        .tab-nav { max-width: 1400px; margin: 0 auto 16px; display: flex; gap: 4px; border-bottom: 1px solid #30363d; padding-bottom: 0; }
+        .tab-btn { padding: 10px 20px; background: none; border: none; border-bottom: 2px solid transparent; color: #8b949e; cursor: pointer; font-size: 0.9em; font-weight: 500; transition: all 0.15s; }
+        .tab-btn:hover { color: #c9d1d9; }
+        .tab-btn.active { color: #58a6ff; border-bottom-color: #58a6ff; font-weight: 600; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* Task items */
+        .task-item { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 10px 12px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+        .task-info { flex: 1; }
+        .task-info .task-title { font-size: 0.85em; color: #c9d1d9; font-weight: 500; }
+        .task-info .task-status { font-size: 0.75em; margin-top: 2px; }
+        .task-actions { display: flex; gap: 6px; }
+        .task-actions .task-btn { padding: 4px 10px; border: 1px solid #30363d; border-radius: 4px; background: #21262d; color: #c9d1d9; cursor: pointer; font-size: 0.78em; transition: all 0.15s; white-space: nowrap; }
+        .task-actions .task-btn:hover { background: #30363d; }
+        .task-actions .task-btn.pause:hover { border-color: #d29922; color: #d29922; }
+        .task-actions .task-btn.resume:hover { border-color: #3fb950; color: #3fb950; }
+        .task-actions .task-btn.cancel:hover { border-color: #f85149; color: #f85149; }
+        .section-title { font-size: 0.82em; color: #8b949e; margin: 12px 0 8px; font-weight: 600; }
+    </style>
+</head>
+<body>
+    <h1>🧪 nH-Viewer API Test Console</h1>
+    <p class="subtitle">交互式测试所有 nh-api 接口 · 结果以 JSON 格式展示</p>
+
+    <!-- Proxy bar (global) -->
+    <div class="proxy-bar">
+        <span class="label">🔌 Proxy:</span>
+        <div class="toggle-group" id="proxy-toggle">
+            <button class="toggle-btn" data-mode="disabled" onclick="selectProxyMode('disabled')">关闭</button>
+            <button class="toggle-btn" data-mode="auto" onclick="selectProxyMode('auto')">系统代理</button>
+            <button class="toggle-btn" data-mode="custom" onclick="selectProxyMode('custom')">自定义</button>
+        </div>
+        <div class="custom-proxy-inline" id="custom-proxy-inline">
+            <input id="custom-proxy-input" type="text" placeholder="http://127.0.0.1:7897" />
+            <button id="custom-proxy-apply" onclick="applyCustomProxy()">应用</button>
+        </div>
+        <div class="status-indicator">
+            <span class="status-dot" id="status-dot" style="background:#f85149;"></span>
+            <span id="status-text" style="color:#8b949e;">未连接</span>
+            <span id="api-key-info" style="color:#484f58;font-size:0.9em;"></span>
+        </div>
+    </div>
+
+    <!-- Tab navigation -->
+    <div class="tab-nav">
+        <button class="tab-btn active" data-tab="api" onclick="switchTab('api')">🔌 API 测试</button>
+        <button class="tab-btn" data-tab="download" onclick="switchTab('download')">⬇️ 下载管理</button>
+        <button class="tab-btn" data-tab="database" onclick="switchTab('database')">💾 数据库</button>
+    </div>
+
+    <!-- Tab: API Testing -->
+    <div class="tab-content active" id="tab-api">
+        <div class="grid" id="grid-api"></div>
+    </div>
+
+    <!-- Tab: Download Management -->
+    <div class="tab-content" id="tab-download">
+        <div class="grid" id="grid-download"></div>
+    </div>
+
+    <!-- Tab: Database -->
+    <div class="tab-content" id="tab-database">
+        <div class="grid" id="grid-database"></div>
+    </div>
+
+<script>
+// ===========================================================================
+// Tab definitions — each card belongs to a tab
+// ===========================================================================
+
+const apiCards = [
+    { title: "Warm Up", method: "GET", path: "/api/warm_up", params: [], desc: "预热连接，获取 Cloudflare cookies" },
+    { title: "Get Gallery", method: "GET", path: "/api/gallery", params: [
+        { name: "id", label: "Gallery ID", placeholder: "463142", required: true },
+        { name: "include", label: "Include (可选)", placeholder: "comments,related" }
+    ], desc: "获取画廊详情" },
+    { title: "Search", method: "GET", path: "/api/search", params: [
+        { name: "query", label: "Query", placeholder: "english", required: true },
+        { name: "page", label: "Page", placeholder: "1", default: "1" },
+        { name: "sort", label: "Sort", type: "select", options: ["date","popular","popular-today","popular-week","popular-month"] }
+    ], desc: "搜索画廊" },
+    { title: "Popular", method: "GET", path: "/api/popular", params: [], desc: "获取今日热门画廊" },
+    { title: "Random", method: "GET", path: "/api/random", params: [], desc: "获取随机画廊 ID" },
+    { title: "Related Galleries", method: "GET", path: "/api/related", params: [
+        { name: "id", label: "Gallery ID", placeholder: "463142", required: true }
+    ], desc: "获取相关画廊" },
+    { title: "Galleries (Paginated)", method: "GET", path: "/api/galleries", params: [
+        { name: "page", label: "Page", placeholder: "1", default: "1" }
+    ], desc: "获取画廊列表（按最新排序）" },
+    { title: "Tagged Galleries", method: "GET", path: "/api/tagged", params: [
+        { name: "tag_id", label: "Tag ID", placeholder: "123", required: true },
+        { name: "page", label: "Page", placeholder: "1", default: "1" },
+        { name: "per_page", label: "Per Page", placeholder: "25", default: "25" },
+        { name: "sort", label: "Sort", type: "select", options: ["date","popular","popular-today","popular-week","popular-month"] }
+    ], desc: "按标签获取画廊" },
+    { title: "Favorites", method: "GET", path: "/api/favorites", params: [
+        { name: "page", label: "Page", placeholder: "1", default: "1" }
+    ], desc: "获取收藏列表（需登录）" },
+    { title: "Add Favorite", method: "POST", path: "/api/favorite/add", params: [
+        { name: "id", label: "Gallery ID", placeholder: "463142", required: true }
+    ], desc: "添加收藏" },
+    { title: "Remove Favorite", method: "POST", path: "/api/favorite/remove", params: [
+        { name: "id", label: "Gallery ID", placeholder: "463142", required: true }
+    ], desc: "取消收藏" },
+    { title: "Tags by IDs", method: "GET", path: "/api/tags/ids", params: [
+        { name: "ids", label: "Tag IDs (逗号分隔)", placeholder: "1,2,3", required: true }
+    ], desc: "按 ID 查询标签（最多100个）" },
+    { title: "Tags by Type", method: "GET", path: "/api/tags/type", params: [
+        { name: "tag_type", label: "Tag Type", placeholder: "artist", required: true },
+        { name: "sort", label: "Sort", type: "select", options: ["popular","name"] },
+        { name: "page", label: "Page", placeholder: "1", default: "1" },
+        { name: "per_page", label: "Per Page", placeholder: "25", default: "25" }
+    ], desc: "按类型查询标签" },
+    { title: "CDN Config", method: "GET", path: "/api/cdn", params: [], desc: "获取 CDN 配置" },
+    { title: "Download URL (API)", method: "GET", path: "/api/download_url", params: [
+        { name: "id", label: "Gallery ID", placeholder: "463142", required: true },
+        { name: "format", label: "Format", type: "select", options: ["zip","cbz","torrent"] }
+    ], desc: "仅获取下载链接（不下载）" },
+];
+
+const downloadCards = [
+    { title: "⬇️ Start Download", method: "GET", path: "/api/download/start", params: [
+        { name: "id", label: "Gallery ID", placeholder: "463142", required: true }
+    ], desc: "提交画廊下载任务" },
+    { title: "📋 Download Queue", method: "GET", path: "/api/download/queue", params: [], desc: "查看下载队列与历史记录", isQueueCard: true },
+    { title: "🔄 Cancel All & Reset", method: "POST", path: "/api/download/cancel_all", params: [], desc: "取消所有下载任务（清空队列）" },
+];
+
+const databaseCards = [
+    { title: "📜 Browsing History", method: "GET", path: "/api/history", params: [
+        { name: "page", label: "Page", placeholder: "1", default: "1" },
+        { name: "per_page", label: "Per Page", placeholder: "25", default: "25" }
+    ], desc: "本地浏览历史（SQLite）" },
+    { title: "🔍 Search History", method: "GET", path: "/api/search_history", params: [], desc: "本地搜索历史记录" },
+    { title: "⭐ Local Favorites", method: "GET", path: "/api/local_favorites", params: [
+        { name: "page", label: "Page", placeholder: "1", default: "1" },
+        { name: "per_page", label: "Per Page", placeholder: "25", default: "25" }
+    ], desc: "本地收藏列表" },
+];
+
+// Unified API registry (flat array, no object spread — preserve references)
+const allCards = [];
+let _offset = 0;
+apiCards.forEach(c => { c._idx = allCards.length; allCards.push(c); });
+downloadCards.forEach(c => { c._idx = allCards.length; allCards.push(c); });
+databaseCards.forEach(c => { c._idx = allCards.length; allCards.push(c); });
+
+// ===========================================================================
+// Tab switching
+// ===========================================================================
+
+function switchTab(tabName) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tabName));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === `tab-${tabName}`));
+}
+
+// ===========================================================================
+// Proxy management
+// ===========================================================================
+
+let currentProxyMode = 'auto';
+let customProxyValue = '';
+let proxyAbortController = null;
+
+function saveProxySetting(mode, customUrl) {
+    localStorage.setItem('nh_proxy_mode', mode);
+    if (customUrl) localStorage.setItem('nh_proxy_custom_url', customUrl);
+    else localStorage.removeItem('nh_proxy_custom_url');
+}
+function loadProxySetting() {
+    return { mode: localStorage.getItem('nh_proxy_mode'), customUrl: localStorage.getItem('nh_proxy_custom_url') || '' };
+}
+function setToggleButtonsEnabled(enabled) {
+    document.querySelectorAll('#proxy-toggle .toggle-btn').forEach(b => { b.style.pointerEvents = enabled ? '' : 'none'; b.style.opacity = enabled ? '' : '0.5'; });
+    const btn = document.getElementById('custom-proxy-apply');
+    if (btn) btn.disabled = !enabled;
+}
+
+function selectProxyMode(mode) {
+    document.querySelectorAll('#proxy-toggle .toggle-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+    const ci = document.getElementById('custom-proxy-inline');
+    if (mode === 'custom') { ci.classList.add('expanded'); setTimeout(() => document.getElementById('custom-proxy-input').focus(), 300); }
+    else { ci.classList.remove('expanded'); applyProxy(mode); }
+    currentProxyMode = mode;
+}
+
+async function applyCustomProxy() {
+    const url = document.getElementById('custom-proxy-input').value.trim();
+    if (!url) { alert('请输入代理地址'); return; }
+    customProxyValue = url;
+    await applyProxy('custom', url);
+}
+
+async function applyProxy(mode, customUrl) {
+    const dot = document.getElementById('status-dot');
+    const text = document.getElementById('status-text');
+
+    if (proxyAbortController) proxyAbortController.abort();
+    const controller = new AbortController();
+    proxyAbortController = controller;
+
+    setToggleButtonsEnabled(false);
+    dot.style.background = '#d29922'; text.textContent = '连接中...'; text.style.color = '#d29922';
+
+    const proxyValue = mode === 'disabled' ? 'disabled' : mode === 'auto' ? 'auto' : (customUrl || customProxyValue);
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+    try {
+        const resp = await fetch('/api/proxy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ proxy: proxyValue }), signal: controller.signal });
+        clearTimeout(timeoutId);
+        const data = await resp.json();
+        if (data.success) {
+            dot.style.background = '#3fb950'; text.textContent = '已连接'; text.style.color = '#3fb950';
+            if (data.data.proxy) customProxyValue = data.data.proxy;
+            saveProxySetting(mode, mode === 'custom' ? (customUrl || customProxyValue) : null);
+            checkStatus(); // refresh to show precise mode label
+        } else {
+            dot.style.background = '#f85149'; text.textContent = '连接失败'; text.style.color = '#f85149';
+            if (!controller.signal.aborted) alert('Proxy error: ' + (data.error || 'Unknown error'));
+        }
+    } catch (e) {
+        clearTimeout(timeoutId);
+        if (e.name === 'AbortError') return;
+        dot.style.background = '#f85149'; text.textContent = '连接失败'; text.style.color = '#f85149';
+    } finally {
+        clearTimeout(timeoutId);
+        if (proxyAbortController === controller) { setToggleButtonsEnabled(true); }
+    }
+}
+
+document.getElementById('custom-proxy-input').addEventListener('keydown', e => { if (e.key === 'Enter') applyCustomProxy(); });
+
+async function checkStatus() {
+    try {
+        const resp = await fetch('/api/status');
+        const data = await resp.json();
+        if (data.success) {
+            const d = data.data;
+            const dot = document.getElementById('status-dot');
+            const text = document.getElementById('status-text');
+            const keyInfo = document.getElementById('api-key-info');
+            const proxy = d.proxy || 'auto';
+
+            // Show more precise status
+            if (d.connected) {
+                const modeLabel = proxy === 'disabled' ? '直连' : proxy === 'auto' ? '系统代理' : proxy;
+                dot.style.background = '#3fb950'; text.textContent = `已连接 (${modeLabel})`; text.style.color = '#3fb950';
+            } else {
+                dot.style.background = '#f85149'; text.textContent = '未连接'; text.style.color = '#f85149';
+            }
+            keyInfo.textContent = d.api_key_masked ? `API Key: ${d.api_key_masked}` : '';
+
+            if (proxy === 'disabled' || proxy === 'none') selectProxyModeUI('disabled');
+            else if (proxy === 'auto' || proxy === '') selectProxyModeUI('auto');
+            else { selectProxyModeUI('custom'); document.getElementById('custom-proxy-input').value = proxy; customProxyValue = proxy; }
+        }
+    } catch (e) { console.error('Failed to check status:', e); }
+}
+
+function selectProxyModeUI(mode) {
+    currentProxyMode = mode;
+    document.querySelectorAll('#proxy-toggle .toggle-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+    const ci = document.getElementById('custom-proxy-inline');
+    if (mode === 'custom') ci.classList.add('expanded'); else ci.classList.remove('expanded');
+}
+
+// ===========================================================================
+// Card rendering
+// ===========================================================================
+
+function createCard(api, cardIndex) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    const mc = api.method === 'GET' ? 'method-get' : 'method-post';
+    let paramsHtml = '';
+    if (api.params.length > 0) {
+        paramsHtml = '<div class="params">';
+        for (const p of api.params) {
+            if (p.type === 'select') {
+                paramsHtml += `<label>${p.label}<select id="param-${cardIndex}-${p.name}">${p.options.map(o => `<option value="${o}">${o}</option>`).join('')}</select></label>`;
+            } else {
+                paramsHtml += `<label>${p.label}<input id="param-${cardIndex}-${p.name}" placeholder="${p.placeholder||''}" ${p.required?'required':''} value="${p.default||''}"></label>`;
+            }
+        }
+        paramsHtml += '</div>';
+    }
+    const queueSection = api.isQueueCard ? '<div id="queue-tasks"></div>' : '';
+    card.innerHTML = `<div class="card-header"><span class="card-title">${api.title}</span><span class="method-badge ${mc}">${api.method}</span></div><div style="font-size:0.78em;color:#8b949e;margin-bottom:8px">${api.desc}</div>${paramsHtml}<button class="btn" id="btn-${cardIndex}">Send Request</button>${queueSection}<div class="result-box" id="result-${cardIndex}"><div class="result-meta"><span class="status" id="status-${cardIndex}"></span><span class="elapsed" id="elapsed-${cardIndex}"></span></div><pre id="json-${cardIndex}"></pre></div>`;
+    return card;
+}
+
+// Build grids
+function buildGrid(cards, containerId) {
+    const grid = document.getElementById(containerId);
+    cards.forEach(api => {
+        const idx = api._idx;
+        const card = createCard(api, idx);
+        grid.appendChild(card);
+        document.getElementById(`btn-${idx}`).addEventListener('click', () => callApi(idx));
+    });
+}
+buildGrid(apiCards, 'grid-api');
+buildGrid(downloadCards, 'grid-download');
+buildGrid(databaseCards, 'grid-database');
+
+async function callApi(index) {
+    const api = allCards[index];
+    const btn = document.getElementById(`btn-${index}`);
+    const resultBox = document.getElementById(`result-${index}`);
+    const statusEl = document.getElementById(`status-${index}`);
+    const elapsedEl = document.getElementById(`elapsed-${index}`);
+    const jsonEl = document.getElementById(`json-${index}`);
+
+    const params = new URLSearchParams();
+    for (const p of api.params) {
+        const el = document.getElementById(`param-${index}-${p.name}`);
+        if (el) { const val = el.value.trim() || (el.placeholder||'').trim(); if (p.required && !val) { alert(`${p.label} 是必填项`); return; } if (val) params.set(p.name, val); }
+    }
+    const url = api.path + (params.toString() ? '?' + params.toString() : '');
+
+    btn.disabled = true; btn.classList.add('loading'); btn.textContent = 'Requesting...';
+    resultBox.classList.add('show'); jsonEl.textContent = 'Loading...'; statusEl.textContent = ''; elapsedEl.textContent = '';
+
+    try {
+        const start = performance.now();
+        const resp = await fetch(url, { method: api.method });
+        const duration = (performance.now() - start).toFixed(0);
+        const ct = resp.headers.get('content-type') || '';
+        if (!ct.includes('application/json')) {
+            const text = await resp.text();
+            statusEl.className = 'status status-err'; statusEl.textContent = `✗ Non-JSON (${resp.status})`; elapsedEl.textContent = `Local: ${duration}ms`;
+            jsonEl.textContent = text.substring(0, 500);
+            btn.disabled = false; btn.classList.remove('loading'); btn.textContent = 'Send Request'; return;
+        }
+        const data = await resp.json();
+        if (data.success) { statusEl.className = 'status status-ok'; statusEl.textContent = `✓ Success (HTTP ${resp.status})`; }
+        else { statusEl.className = 'status status-err'; statusEl.textContent = `✗ Error (HTTP ${resp.status})`; }
+        elapsedEl.textContent = `⏱ ${data.elapsed_ms}ms (local: ${duration}ms)`;
+        if (api.isQueueCard && data.success) renderQueueTasks(data.data);
+        jsonEl.textContent = JSON.stringify(data.data ?? data.error ?? data, null, 2);
+    } catch (err) { statusEl.className = 'status status-err'; statusEl.textContent = '✗ Network Error'; jsonEl.textContent = err.message; }
+    finally { btn.disabled = false; btn.classList.remove('loading'); btn.textContent = 'Send Request'; }
+}
+
+// ===========================================================================
+// Download queue — split into active tasks + history records
+// ===========================================================================
+
+function renderQueueTasks(tasks) {
+    const container = document.getElementById('queue-tasks');
+    container.innerHTML = '';
+    if (!Array.isArray(tasks) || tasks.length === 0) { container.innerHTML = '<div style="padding:8px;font-size:0.82em;color:#8b949e;text-align:center;">队列为空</div>'; return; }
+
+    // Group tasks by gallery_id
+    const groups = {};
+    for (const task of tasks) {
+        const gid = task.gallery_id || 0;
+        if (!groups[gid]) groups[gid] = [];
+        groups[gid].push(task);
+    }
+
+    const activeStates = ['Pending', 'Downloading', 'Paused'];
+
+    // Separate into active galleries and completed galleries
+    const activeGalleryIds = [];
+    const historyGalleryIds = [];
+    for (const gid of Object.keys(groups)) {
+        const hasActive = groups[gid].some(t => activeStates.includes(extractState(t.state)));
+        if (hasActive) activeGalleryIds.push(gid);
+        else historyGalleryIds.push(gid);
+    }
+
+    // Active galleries
+    if (activeGalleryIds.length > 0) {
+        container.innerHTML += '<div class="section-title">⏳ 活跃下载 (' + activeGalleryIds.length + ' 个画廊)</div>';
+        for (const gid of activeGalleryIds) {
+            container.appendChild(createGalleryItem(gid, groups[gid], false));
+        }
+    }
+
+    // History galleries
+    if (historyGalleryIds.length > 0) {
+        container.innerHTML += '<div class="section-title">📜 下载记录 (' + historyGalleryIds.length + ' 个画廊)</div>';
+        for (const gid of historyGalleryIds) {
+            container.appendChild(createGalleryItem(gid, groups[gid], true));
+        }
+    }
+}
+
+function createGalleryItem(galleryId, tasks, isHistory) {
+    const item = document.createElement('div');
+    item.className = 'task-item';
+    if (isHistory) item.style.opacity = '0.6';
+
+    // Calculate aggregate progress
+    let totalDownloaded = 0, totalBytes = 0, completedPages = 0;
+    const totalPages = tasks.length;
+    const activeStates = ['Pending', 'Downloading', 'Paused'];
+    let worstState = 'Completed'; // for display
+
+    for (const t of tasks) {
+        totalDownloaded += t.downloaded_bytes || 0;
+        totalBytes += t.total_bytes || 0;
+        const s = extractState(t.state);
+        if (s === 'Completed') completedPages++;
+        if (activeStates.includes(s)) worstState = s;
+    }
+
+    // Determine display state priority
+    const hasDownloading = tasks.some(t => extractState(t.state) === 'Downloading');
+    const hasPaused = tasks.some(t => extractState(t.state) === 'Paused');
+    const hasPending = tasks.some(t => extractState(t.state) === 'Pending');
+    let displayState = 'Completed';
+    if (hasDownloading) displayState = 'Downloading';
+    else if (hasPending) displayState = 'Pending';
+    else if (hasPaused) displayState = 'Paused';
+
+    const color = getStatusColor(displayState);
+    const label = `${completedPages}/${totalPages} 页`;
+
+    // Progress bar
+    let progressHtml = '';
+    if (totalBytes > 0) {
+        const pct = Math.round((totalDownloaded / totalBytes) * 100);
+        progressHtml = `<div style="font-size:0.72em;color:#8b949e;margin-top:2px;"><span style="display:inline-block;width:100px;height:4px;background:#30363d;border-radius:2px;vertical-align:middle;"><span style="display:inline-block;height:100%;width:${pct}%;background:${color};border-radius:2px;"></span></span> ${pct}% · ${formatBytes(totalDownloaded)} / ${formatBytes(totalBytes)}</div>`;
+    } else {
+        const pct = totalPages > 0 ? Math.round((completedPages / totalPages) * 100) : 0;
+        progressHtml = `<div style="font-size:0.72em;color:#8b949e;margin-top:2px;"><span style="display:inline-block;width:100px;height:4px;background:#30363d;border-radius:2px;vertical-align:middle;"><span style="display:inline-block;height:100%;width:${pct}%;background:${color};border-radius:2px;"></span></span> ${pct}%</div>`;
+    }
+
+    item.innerHTML = `<div class="task-info"><div class="task-title">Gallery ${galleryId}</div><div class="task-status" style="color:${color}">${getStatusLabel(displayState)} · ${label}</div>${progressHtml}</div><div class="task-actions" id="task-actions-gallery-${galleryId}"></div>`;
+
+    // Action buttons
+    const actionsEl = item.querySelector('.task-actions');
+    if (!isHistory) renderGalleryActions(actionsEl, tasks, displayState, galleryId);
+    else {
+        if (completedPages === totalPages) actionsEl.innerHTML = '<span style="font-size:0.78em;color:#3fb950;">✓</span>';
+        else actionsEl.innerHTML = '<span style="font-size:0.78em;color:#8b949e;">部分完成</span>';
+    }
+
+    return item;
+}
+
+function renderGalleryActions(container, tasks, displayState, galleryId) {
+    container.innerHTML = '';
+    const activeIds = tasks.filter(t => !['Completed', 'Failed', 'Cancelled'].includes(extractState(t.state))).map(t => t.id);
+
+    if (activeIds.length === 0) return;
+
+    if (displayState === 'Downloading' || displayState === 'Pending') {
+        const pauseBtn = createTaskBtn('⏸ 暂停', 'pause', () => galleryAction('pause', activeIds));
+        const cancelBtn = createTaskBtn('❌ 取消', 'cancel', () => galleryAction('cancel', activeIds));
+        container.appendChild(pauseBtn);
+        container.appendChild(cancelBtn);
+    } else if (displayState === 'Paused') {
+        const resumeBtn = createTaskBtn('▶ 恢复', 'resume', () => galleryAction('resume', activeIds));
+        const cancelBtn = createTaskBtn('❌ 取消', 'cancel', () => galleryAction('cancel', activeIds));
+        container.appendChild(resumeBtn);
+        container.appendChild(cancelBtn);
+    }
+}
+
+async function galleryAction(action, taskIds) {
+    try {
+        await Promise.all(taskIds.map(id => fetch(`/api/download/${action}?id=${id}`)));
+        const qi = allCards.findIndex(a => a.isQueueCard);
+        if (qi >= 0) callApi(qi);
+    } catch (e) { alert(`网络错误: ${e.message}`); }
+}
+
+function createTaskItem(task, isHistory) {
+    const state = extractState(task.state);
+    const item = document.createElement('div');
+    item.className = 'task-item';
+    if (isHistory) item.style.opacity = '0.6';
+
+    const color = getStatusColor(task.state);
+    const label = getStatusLabel(task.state);
+    const pageInfo = task.page ? ` · P${task.page}` : '';
+
+    let progressHtml = '';
+    if (task.total_bytes > 0) {
+        const pct = Math.round((task.downloaded_bytes / task.total_bytes) * 100);
+        progressHtml = `<div style="font-size:0.72em;color:#8b949e;margin-top:2px;"><span style="display:inline-block;width:100px;height:4px;background:#30363d;border-radius:2px;vertical-align:middle;"><span style="display:inline-block;height:100%;width:${pct}%;background:${color};border-radius:2px;"></span></span> ${pct}% · ${formatBytes(task.downloaded_bytes)} / ${formatBytes(task.total_bytes)}</div>`;
+    }
+
+    item.innerHTML = `<div class="task-info"><div class="task-title">#${task.id} — Gallery ${task.gallery_id||'N/A'}${pageInfo}</div><div class="task-status" style="color:${color}">${label}</div>${progressHtml}</div><div class="task-actions" id="task-actions-${task.id}"></div>`;
+
+    const actionsEl = item.querySelector('.task-actions');
+    if (!isHistory) renderTaskActions(actionsEl, task);
+    else {
+        if (state === 'Completed') actionsEl.innerHTML = '<span style="font-size:0.78em;color:#3fb950;">✓</span>';
+        else if (state === 'Failed') { const r = typeof task.state === 'object' && task.state.Failed ? task.state.Failed : ''; actionsEl.innerHTML = `<span style="font-size:0.78em;color:#f85149;" title="${r}">✗</span>`; }
+        else actionsEl.innerHTML = '<span style="font-size:0.78em;color:#8b949e;">已取消</span>';
+    }
+    return item;
+}
+
+function renderTaskActions(container, task) {
+    container.innerHTML = '';
+    const state = extractState(task.state);
+    if (state === 'Downloading' || state === 'Pending') {
+        container.appendChild(createTaskBtn('⏸ 暂停', 'pause', () => taskAction('pause', task.id)));
+        container.appendChild(createTaskBtn('❌ 取消', 'cancel', () => taskAction('cancel', task.id)));
+    } else if (state === 'Paused') {
+        container.appendChild(createTaskBtn('▶ 恢复', 'resume', () => taskAction('resume', task.id)));
+        container.appendChild(createTaskBtn('❌ 取消', 'cancel', () => taskAction('cancel', task.id)));
+    }
+}
+
+function createTaskBtn(text, cls, onClick) { const b = document.createElement('button'); b.className = `task-btn ${cls}`; b.textContent = text; b.onclick = onClick; return b; }
+
+async function taskAction(action, taskId) {
+    try {
+        const resp = await fetch(`/api/download/${action}?id=${taskId}`);
+        const data = await resp.json();
+        if (data.success) { const qi = allCards.findIndex(a => a.isQueueCard); if (qi >= 0) callApi(qi); }
+        else alert(`操作失败: ${data.error || 'Unknown error'}`);
+    } catch (e) { alert(`网络错误: ${e.message}`); }
+}
+
+// ===========================================================================
+// Helpers
+// ===========================================================================
+
+function extractState(state) {
+    if (typeof state === 'string') return state;
+    if (typeof state === 'object' && state !== null) { const k = Object.keys(state); if (k.length === 1) return k[0]; }
+    return String(state || 'Unknown');
+}
+function getStatusColor(state) {
+    const s = extractState(state);
+    if (s === 'Downloading' || s === 'Pending') return '#58a6ff';
+    if (s === 'Paused') return '#d29922';
+    if (s === 'Completed') return '#3fb950';
+    if (s === 'Failed') return '#f85149';
+    return '#8b949e';
+}
+function getStatusLabel(state) {
+    const s = extractState(state);
+    if (s === 'Downloading') return '⬇️ 下载中';
+    if (s === 'Pending') return '📋 等待中';
+    if (s === 'Paused') return '⏸ 已暂停';
+    if (s === 'Completed') return '✓ 已完成';
+    if (s === 'Failed') { const r = typeof state === 'object' && state.Failed ? `: ${state.Failed}` : ''; return '✗ 失败' + r; }
+    if (s === 'Cancelled') return '已取消';
+    return s || '未知';
+}
+function formatBytes(b) { if (b === 0) return '0 B'; const k = 1024, s = ['B','KB','MB','GB'], i = Math.floor(Math.log(b)/Math.log(k)); return parseFloat((b/Math.pow(k,i)).toFixed(1)) + ' ' + s[i]; }
+
+// ===========================================================================
+// Init
+// ===========================================================================
+(async function initProxy() {
+    const saved = loadProxySetting();
+    // Restore UI state from localStorage immediately
+    if (saved.mode) {
+        selectProxyModeUI(saved.mode);
+        if (saved.mode === 'custom' && saved.customUrl) {
+            document.getElementById('custom-proxy-input').value = saved.customUrl;
+            customProxyValue = saved.customUrl;
+        }
+    }
+    // Check what the server already has — skip applyProxy if settings match
+    try {
+        const resp = await fetch('/api/status');
+        const data = await resp.json();
+        if (data.success) {
+            const d = data.data;
+            const serverProxy = d.proxy || 'auto';
+            const savedMode = saved.mode || 'auto';
+            const serverMode = (serverProxy === 'disabled' || serverProxy === 'none') ? 'disabled'
+                : (serverProxy === 'auto' || serverProxy === '') ? 'auto' : 'custom';
+            const needApply = savedMode !== serverMode ||
+                (savedMode === 'custom' && saved.customUrl && saved.customUrl !== serverProxy);
+
+            if (d.connected && !needApply) {
+                // Already connected with the right proxy — just update UI
+                checkStatus();
+            } else if (needApply && saved.mode) {
+                // Settings differ — apply and wait
+                applyProxy(saved.mode, saved.customUrl).then(() => checkStatus());
+            } else {
+                checkStatus();
+            }
+        } else {
+            if (saved.mode) applyProxy(saved.mode, saved.customUrl).then(() => checkStatus());
+            else checkStatus();
+        }
+    } catch (e) {
+        if (saved.mode) applyProxy(saved.mode, saved.customUrl).then(() => checkStatus());
+        else checkStatus();
+    }
+})();
+</script>
+</body>
+</html>

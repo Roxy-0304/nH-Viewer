@@ -11,8 +11,66 @@ use crate::types::{
     PaginatedResponse, RelatedGalleriesResponse, TagResponse,
 };
 
-/// Full browser-like User-Agent string (Chrome on Windows)
-const BROWSER_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+/// Full browser-like User-Agent string (Chrome on Windows).
+/// Shared between `NhClient` and download workers for consistency.
+pub const BROWSER_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+
+/// Detect the system proxy setting.
+///
+/// - **Windows**: reads `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings`
+///   → `ProxyServer` (e.g. `127.0.0.1:7897`) only when `ProxyEnable` is 1.
+/// - **macOS / Linux / Android**: reads `HTTP_PROXY`, `HTTPS_PROXY`, or `ALL_PROXY` env vars.
+///
+/// Returns `Some(proxy_url)` if a proxy is configured, `None` otherwise.
+fn detect_system_proxy() -> Option<String> {
+    #[cfg(windows)]
+    {
+        use winreg::enums::*;
+        use winreg::RegKey;
+
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let path = r"Software\Microsoft\Windows\CurrentVersion\Internet Settings";
+        if let Ok(key) = hkcu.open_subkey_with_flags(path, KEY_READ) {
+            // Check if proxy is enabled
+            let enabled: u32 = key.get_value("ProxyEnable").unwrap_or(0);
+            if enabled != 1 {
+                debug!("Windows system proxy is disabled (ProxyEnable=0)");
+                return None;
+            }
+            // Read proxy server address
+            if let Ok(proxy_server) = key.get_value::<String, _>("ProxyServer") {
+                let server = proxy_server.trim().to_string();
+                if !server.is_empty() {
+                    // Ensure it has a scheme prefix for reqwest
+                    let url = if server.contains("://") {
+                        server
+                    } else {
+                        format!("http://{}", server)
+                    };
+                    debug!("Windows system proxy detected: {}", url);
+                    return Some(url);
+                }
+            }
+            debug!("Windows system proxy enabled but ProxyServer is empty");
+        }
+        None
+    }
+
+    #[cfg(not(windows))]
+    {
+        // Check standard environment variables
+        for var in &["HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"] {
+            if let Ok(val) = std::env::var(var) {
+                let val = val.trim().to_string();
+                if !val.is_empty() {
+                    debug!("System proxy detected from env {}: {}", var, val);
+                    return Some(val);
+                }
+            }
+        }
+        None
+    }
+}
 
 /// Proxy mode for HTTP requests.
 #[derive(Debug, Clone)]
@@ -39,21 +97,20 @@ impl ProxyMode {
         match self {
             ProxyMode::Disabled => Ok(None),
             ProxyMode::System => {
-                // Let reqwest use its built-in system proxy detection
-                // (reads HTTP_PROXY, HTTPS_PROXY, ALL_PROXY, NO_PROXY)
-                Ok(Some(reqwest::Proxy::custom(|url| {
-                    // Return None to fall back to no proxy if no env var is set
-                    let var = if url.scheme() == "https" {
-                        std::env::var("HTTPS_PROXY").or_else(|_| std::env::var("https_proxy"))
-                    } else {
-                        std::env::var("HTTP_PROXY").or_else(|_| std::env::var("http_proxy"))
-                    };
-                    var.ok().or_else(|| {
-                        std::env::var("ALL_PROXY")
-                            .or_else(|_| std::env::var("all_proxy"))
-                            .ok()
-                    })
-                })))
+                // Cross-platform system proxy detection:
+                // - Windows: reads registry Internet Settings (ProxyServer)
+                // - macOS/Linux/Android: reads HTTP_PROXY/HTTPS_PROXY/ALL_PROXY env vars
+                if let Some(proxy_url) = detect_system_proxy() {
+                    let proxy = reqwest::Proxy::all(&proxy_url).map_err(|e| {
+                        crate::error::Error::CdnConfigFetch {
+                            reason: format!("invalid system proxy URL '{}': {e}", proxy_url),
+                        }
+                    })?;
+                    Ok(Some(proxy))
+                } else {
+                    // No system proxy configured — connect directly
+                    Ok(None)
+                }
             }
             ProxyMode::Custom(url) => {
                 let proxy =
@@ -264,14 +321,10 @@ impl NhClient {
 
     /// Create a client synchronously with static CDN config (no network call).
     /// Use this when you want to avoid the async CDN fetch at construction time.
-    pub fn new_static(config: ClientConfig) -> Self {
+    pub fn new_static(config: ClientConfig) -> Result<Self> {
         let mut builder = Client::builder().timeout(config.timeout);
 
-        if let Some(proxy) = config
-            .proxy_mode
-            .to_reqwest_proxy()
-            .expect("Invalid proxy config")
-        {
+        if let Some(proxy) = config.proxy_mode.to_reqwest_proxy()? {
             builder = builder.proxy(proxy);
         }
 
@@ -279,18 +332,14 @@ impl NhClient {
             builder = builder.cookie_provider(Arc::new(reqwest::cookie::Jar::default()));
         }
 
-        let headers = Self::build_headers(&config).expect("Invalid headers in config");
+        let headers = Self::build_headers(&config)?;
+        let client = builder.default_headers(headers).build()?;
 
-        let client = builder
-            .default_headers(headers)
-            .build()
-            .expect("Failed to build HTTP client");
-
-        Self {
+        Ok(Self {
             client,
             config,
             cdn_config: Arc::new(CdnConfig::default()),
-        }
+        })
     }
 
     /// Fetch CDN configuration from the API (internal helper)
@@ -366,12 +415,15 @@ impl NhClient {
         F: Fn(&Client, &str) -> Fut,
         Fut: std::future::Future<Output = std::result::Result<Response, reqwest::Error>>,
     {
+        let mut skip_delay = false;
         for attempt in 0..=self.config.max_retries {
-            if attempt > 0 {
+            if attempt > 0 && !skip_delay {
                 let delay = self.config.retry_delay * 2u32.pow(attempt - 1);
                 debug!("Retry {} attempt {} after {:?}", method, attempt, delay);
                 tokio::time::sleep(delay).await;
             }
+            // Reset the flag so subsequent iterations use normal backoff
+            skip_delay = false;
 
             match make_request(&self.client, url).await {
                 Ok(response) => {
@@ -398,7 +450,10 @@ impl NhClient {
                             if attempt < self.config.max_retries {
                                 let delay = retry_after
                                     .unwrap_or(self.config.retry_delay * 2u32.pow(attempt));
+                                // Sleep for the 429 delay and skip the loop-top
+                                // backoff on the next iteration to avoid double sleep.
                                 tokio::time::sleep(delay).await;
+                                skip_delay = true;
                                 continue;
                             }
 

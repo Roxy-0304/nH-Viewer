@@ -180,6 +180,15 @@ pub async fn list_galleries(
         .collect())
 }
 
+/// Escape SQL LIKE wildcards (`%` and `_`) in user input so they are treated
+/// as literal characters rather than pattern operators.
+fn escape_like(query: &str) -> String {
+    query
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
+}
+
 /// Search cached galleries by title (simple LIKE search).
 pub async fn search_galleries(
     pool: &SqlitePool,
@@ -187,13 +196,16 @@ pub async fn search_galleries(
     limit: u32,
     offset: u32,
 ) -> crate::error::Result<Vec<GalleryPreview>> {
-    let pattern = format!("%{}%", query);
+    let escaped = escape_like(query);
+    let pattern = format!("%{}%", escaped);
     let rows = sqlx::query_as::<_, (i64, String, i64, Option<String>)>(
         "SELECT g.id,
                 COALESCE(g.title_en, g.title_jp, g.title_pretty, 'Untitled') as title,
                 g.num_pages, g.cover_ext
          FROM galleries g
-         WHERE g.title_en LIKE ?1 OR g.title_jp LIKE ?1 OR g.title_pretty LIKE ?1
+         WHERE g.title_en LIKE ?1 ESCAPE '\\'
+            OR g.title_jp LIKE ?1 ESCAPE '\\'
+            OR g.title_pretty LIKE ?1 ESCAPE '\\'
          ORDER BY g.cached_at DESC
          LIMIT ?2 OFFSET ?3",
     )

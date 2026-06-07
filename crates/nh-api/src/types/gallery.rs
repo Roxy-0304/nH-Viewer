@@ -83,8 +83,17 @@ pub struct GalleryListItem {
 
 impl GalleryListItem {
     /// Return the best available title.
+    ///
+    /// Prefers `english_title` when non-empty, falls back to
+    /// `japanese_title` if present.
     pub fn best_title(&self) -> &str {
-        &self.english_title
+        if !self.english_title.is_empty() {
+            &self.english_title
+        } else if let Some(ref jp) = self.japanese_title {
+            jp
+        } else {
+            &self.english_title
+        }
     }
 }
 

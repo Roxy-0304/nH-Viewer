@@ -18,25 +18,36 @@ static API_CLIENT: AsyncOnceCell<Arc<RwLock<NhClient>>> = AsyncOnceCell::const_n
 static STORAGE: OnceCell<Storage> = OnceCell::new();
 
 /// Initialise the bridge layer — call once from Dart during app startup.
-pub async fn init_bridge(storage: Storage) {
-    init_bridge_with_config(storage, ClientConfig::default()).await;
+pub async fn init_bridge(storage: Storage) -> anyhow::Result<()> {
+    init_bridge_with_config(storage, ClientConfig::default()).await
 }
 
 /// Initialise the bridge layer with a custom `ClientConfig`.
+///
+/// This function is **idempotent** — calling it a second time is a no-op that
+/// returns `Ok(())`, so callers don't need to track whether initialization has
+/// already happened.
 #[flutter_rust_bridge::frb(ignore)]
-pub async fn init_bridge_with_config(storage: Storage, config: ClientConfig) {
+pub async fn init_bridge_with_config(storage: Storage, config: ClientConfig) -> anyhow::Result<()> {
+    // Idempotent: if already initialised, silently return.
+    if STORAGE.get().is_some() {
+        return Ok(());
+    }
+
     STORAGE
         .set(storage)
-        .expect("init_bridge has already been called");
+        .map_err(|_| anyhow::anyhow!("init_bridge has already been called"))?;
 
     API_CLIENT
         .get_or_init(|| async {
-            let client = NhClient::new(config.clone())
-                .await
-                .expect("failed to create NhClient");
-            Arc::new(RwLock::new(client))
+            match NhClient::new(config.clone()).await {
+                Ok(client) => Arc::new(RwLock::new(client)),
+                Err(e) => panic!("failed to create NhClient: {e}"),
+            }
         })
         .await;
+
+    Ok(())
 }
 
 fn storage() -> anyhow::Result<&'static Storage> {
@@ -193,17 +204,18 @@ pub async fn nh_warm_up() -> anyhow::Result<u16> {
 pub async fn nh_get_gallery(id: u64) -> anyhow::Result<GalleryInfo> {
     let store = storage()?;
     let pool = store.db().pool();
+    let client = api_client().await?;
 
     // 1. Try local cache — read the raw JSON string
     if let Some(raw) = gallery_cache::get_gallery_raw(pool, id).await? {
         if let Ok(gallery) = serde_json::from_str::<GalleryDetailResponse>(&raw) {
-            let info = gallery_detail_to_info(&gallery, None);
+            let cdn = Some(client.cdn_config());
+            let info = gallery_detail_to_info(&gallery, cdn);
             return Ok(info);
         }
     }
 
     // 2. Fetch from API
-    let client = api_client().await?;
     let gallery = client.get_gallery(id, None).await?;
     let cdn = Some(client.cdn_config());
 
