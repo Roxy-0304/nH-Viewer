@@ -307,6 +307,7 @@ impl DownloadManager {
     // -----------------------------------------------------------------------
 
     /// Download a single page.
+    #[allow(clippy::too_many_arguments)]
     pub async fn download_page(
         &self,
         gallery_id: u64,
@@ -382,7 +383,7 @@ impl DownloadManager {
     // -----------------------------------------------------------------------
 
     /// Access the underlying storage.
-    pub fn storage(&self) -> &nh_storage::Storage {
+    pub const fn storage(&self) -> &nh_storage::Storage {
         &self.storage
     }
 

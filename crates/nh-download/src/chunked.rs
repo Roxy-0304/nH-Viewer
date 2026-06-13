@@ -76,7 +76,7 @@ pub struct ChunkDownloader {
 
 impl ChunkDownloader {
     /// Create a new chunk downloader with the given HTTP client.
-    pub fn new(client: Client) -> Self {
+    pub const fn new(client: Client) -> Self {
         Self {
             client,
             chunk_size: DEFAULT_CHUNK_SIZE,
@@ -85,13 +85,13 @@ impl ChunkDownloader {
     }
 
     /// Set the chunk size for Range requests.
-    pub fn with_chunk_size(mut self, size: u64) -> Self {
+    pub const fn with_chunk_size(mut self, size: u64) -> Self {
         self.chunk_size = size;
         self
     }
 
     /// Set the maximum retry attempts per chunk.
-    pub fn with_max_retries(mut self, retries: u32) -> Self {
+    pub const fn with_max_retries(mut self, retries: u32) -> Self {
         self.max_retries = retries;
         self
     }

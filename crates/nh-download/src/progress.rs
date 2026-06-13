@@ -49,11 +49,10 @@ pub struct LoggingReporter;
 
 impl ProgressReporter for LoggingReporter {
     fn on_progress(&self, task_id: u64, bytes_downloaded: u64, total_bytes: u64) {
-        let pct = if total_bytes > 0 {
-            (bytes_downloaded * 100) / total_bytes
-        } else {
-            0
-        };
+        let pct = bytes_downloaded
+            .saturating_mul(100)
+            .checked_div(total_bytes)
+            .unwrap_or(0);
         tracing::debug!(
             task_id,
             bytes_downloaded,

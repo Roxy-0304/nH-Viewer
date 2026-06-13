@@ -78,6 +78,7 @@ pub async fn nh_set_api_key(api_key: String) -> anyhow::Result<()> {
 
     let mut guard = cell.write().await;
     *guard = new_client;
+    drop(guard);
 
     Ok(())
 }
@@ -134,15 +135,12 @@ fn gallery_detail_to_info(
     g: &GalleryDetailResponse,
     cdn: Option<&nh_api::types::CdnConfig>,
 ) -> GalleryInfo {
-    let (cover_url, thumbnail_url) = match cdn {
-        Some(cdn) => {
-            let server_idx = g.id as usize;
-            let cover = build_image_url(cdn, &g.cover.path, server_idx);
-            let thumb = build_thumb_url(cdn, &g.thumbnail.path, server_idx);
-            (Some(cover), Some(thumb))
-        }
-        None => (None, None),
-    };
+    let (cover_url, thumbnail_url) = cdn.map_or((None, None), |cdn| {
+        let server_idx = g.id as usize;
+        let cover = build_image_url(cdn, &g.cover.path, server_idx);
+        let thumb = build_thumb_url(cdn, &g.thumbnail.path, server_idx);
+        (Some(cover), Some(thumb))
+    });
 
     let tags: Vec<TagInfo> = g
         .tags
@@ -196,6 +194,7 @@ fn gallery_list_to_preview(
 pub async fn nh_warm_up() -> anyhow::Result<u16> {
     let client = api_client().await?;
     let status = client.warm_up().await?;
+    drop(client);
     Ok(status)
 }
 
@@ -209,21 +208,23 @@ pub async fn nh_get_gallery(id: u64) -> anyhow::Result<GalleryInfo> {
     // 1. Try local cache — read the raw JSON string
     if let Some(raw) = gallery_cache::get_gallery_raw(pool, id).await? {
         if let Ok(gallery) = serde_json::from_str::<GalleryDetailResponse>(&raw) {
-            let cdn = Some(client.cdn_config());
-            let info = gallery_detail_to_info(&gallery, cdn);
+            let cdn = client.cdn_config().clone();
+            drop(client);
+            let info = gallery_detail_to_info(&gallery, Some(&cdn));
             return Ok(info);
         }
     }
 
     // 2. Fetch from API
     let gallery = client.get_gallery(id, None).await?;
-    let cdn = Some(client.cdn_config());
+    let cdn = client.cdn_config().clone();
+    drop(client);
 
     // 3. Cache the raw JSON for next time (best-effort)
     let raw_json = serde_json::to_string(&gallery).unwrap_or_default();
     let _ = gallery_cache::upsert_gallery(pool, id, &raw_json).await;
 
-    Ok(gallery_detail_to_info(&gallery, cdn))
+    Ok(gallery_detail_to_info(&gallery, Some(&cdn)))
 }
 
 /// Search galleries by query string.
@@ -235,12 +236,13 @@ pub async fn nh_search_galleries(
     let client = api_client().await?;
     let result = client.search(&query, Sort::Date, page).await?;
 
-    let cdn = client.cdn_config();
+    let cdn = client.cdn_config().clone();
     let previews: Vec<GalleryPreviewInfo> = result
         .result
         .iter()
-        .map(|g| gallery_list_to_preview(g, Some(cdn)))
+        .map(|g| gallery_list_to_preview(g, Some(&cdn)))
         .collect();
+    drop(client);
 
     // Record search in history (best-effort)
     if let Ok(store) = storage() {
@@ -257,11 +259,12 @@ pub async fn nh_get_popular() -> anyhow::Result<Vec<GalleryPreviewInfo>> {
     let client = api_client().await?;
     let result = client.get_popular_galleries().await?;
 
-    let cdn = client.cdn_config();
+    let cdn = client.cdn_config().clone();
     let previews: Vec<GalleryPreviewInfo> = result
         .iter()
-        .map(|g| gallery_list_to_preview(g, Some(cdn)))
+        .map(|g| gallery_list_to_preview(g, Some(&cdn)))
         .collect();
+    drop(client);
 
     Ok(previews)
 }
@@ -271,5 +274,6 @@ pub async fn nh_get_popular() -> anyhow::Result<Vec<GalleryPreviewInfo>> {
 pub async fn nh_get_random() -> anyhow::Result<u64> {
     let client = api_client().await?;
     let id = client.get_random_gallery().await?;
+    drop(client);
     Ok(id)
 }

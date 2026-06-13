@@ -45,7 +45,7 @@ impl WorkerPool {
         proxy: Option<reqwest::Proxy>,
         cdn_config: CdnConfig,
     ) -> Self {
-        let (shutdown_tx, shutdown_rx) = watch::channel(false);
+        let (shutdown_tx, mut shutdown_rx) = watch::channel(false);
         let mut workers = Vec::with_capacity(concurrency);
 
         for worker_id in 0..concurrency {
@@ -199,21 +199,19 @@ impl WorkerPool {
         }
 
         // ---- Watchdog task: reaps stale leases periodically ----
-        let watchdog_queue = queue.clone();
-        let mut watchdog_rx = shutdown_rx.clone();
         let watchdog = tokio::spawn(async move {
             info!("watchdog started");
             loop {
                 tokio::select! {
-                    _ = watchdog_rx.changed() => {
-                        if *watchdog_rx.borrow() {
+                    _ = shutdown_rx.changed() => {
+                        if *shutdown_rx.borrow() {
                             info!("watchdog shutting down");
                             break;
                         }
                     }
                     _ = tokio::time::sleep(WATCHDOG_INTERVAL) => {}
                 }
-                watchdog_queue.reap_stale_leases(STALE_LEASE_TIMEOUT).await;
+                queue.reap_stale_leases(STALE_LEASE_TIMEOUT).await;
             }
             info!("watchdog stopped");
         });

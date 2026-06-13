@@ -72,7 +72,7 @@ pub struct DownloadTask {
 
 impl DownloadTask {
     /// Returns true if this task is in a terminal state (completed, failed, cancelled).
-    pub fn is_terminal(&self) -> bool {
+    pub const fn is_terminal(&self) -> bool {
         matches!(
             self.state,
             TaskState::Completed | TaskState::Failed(_) | TaskState::Cancelled
@@ -119,6 +119,7 @@ impl DownloadQueue {
     /// If a task for the same `(gallery_id, page)` already exists in a
     /// non-terminal state, the duplicate is silently skipped and the
     /// existing task id is returned.
+    #[allow(clippy::too_many_arguments)]
     pub async fn add_task(
         &self,
         gallery_id: u64,
@@ -189,11 +190,14 @@ impl DownloadQueue {
         loop {
             {
                 let mut queue = self.inner.lock().await;
-                if let Some(pos) = queue.iter().position(|t| t.is_runnable()) {
-                    let mut task = queue.remove(pos).unwrap();
+                if let Some(pos) = queue.iter().position(DownloadTask::is_runnable) {
+                    let mut task = queue
+                        .remove(pos)
+                        .expect("pos was just validated by position()");
                     task.state = TaskState::Downloading;
                     task.leased_at = Some(Instant::now());
                     queue.push_front(task.clone());
+                    drop(queue);
                     return Some(task);
                 }
             }
@@ -208,9 +212,11 @@ impl DownloadQueue {
         if let Some(task) = queue.iter_mut().find(|t| t.id == task_id) {
             if task.state == TaskState::Pending || task.state == TaskState::Downloading {
                 task.state = TaskState::Paused;
+                drop(queue);
                 return true;
             }
         }
+        drop(queue);
         false
     }
 
@@ -221,9 +227,11 @@ impl DownloadQueue {
             if task.state == TaskState::Paused {
                 task.state = TaskState::Pending;
                 self.notify.notify_one();
+                drop(queue);
                 return true;
             }
         }
+        drop(queue);
         false
     }
 
@@ -233,9 +241,11 @@ impl DownloadQueue {
         if let Some(task) = queue.iter_mut().find(|t| t.id == task_id) {
             if !task.is_terminal() {
                 task.state = TaskState::Cancelled;
+                drop(queue);
                 return true;
             }
         }
+        drop(queue);
         false
     }
 
@@ -245,6 +255,7 @@ impl DownloadQueue {
         if let Some(task) = queue.iter_mut().find(|t| t.id == task_id) {
             task.state = TaskState::Completed;
         }
+        drop(queue);
         self.notify.notify_one();
     }
 
@@ -254,6 +265,7 @@ impl DownloadQueue {
         if let Some(task) = queue.iter_mut().find(|t| t.id == task_id) {
             task.state = TaskState::Failed(reason);
         }
+        drop(queue);
         self.notify.notify_one();
     }
 
@@ -305,6 +317,7 @@ impl DownloadQueue {
                 task.state = TaskState::Pending;
             }
         }
+        drop(queue);
         self.notify.notify_waiters();
     }
 
@@ -320,15 +333,13 @@ impl DownloadQueue {
 
     /// Remove all tasks from the queue (both active and terminal).
     pub async fn clear(&self) {
-        let mut queue = self.inner.lock().await;
-        queue.clear();
+        self.inner.lock().await.clear();
         info!("queue cleared");
     }
 
     /// Serialize the queue state to JSON for persistence.
     pub async fn to_json(&self) -> String {
-        let queue = self.inner.lock().await;
-        let tasks: Vec<&DownloadTask> = queue.iter().collect();
+        let tasks: Vec<DownloadTask> = self.inner.lock().await.iter().cloned().collect();
         serde_json::to_string(&tasks).unwrap_or_default()
     }
 
@@ -352,6 +363,7 @@ impl DownloadQueue {
         }
         let mut next_id = self.next_id.lock().await;
         *next_id = max_id + 1;
+        drop(next_id);
         self.notify.notify_one();
         info!(count = queue.len(), "queue restored from persistence");
         Ok(())

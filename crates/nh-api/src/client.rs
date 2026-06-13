@@ -25,7 +25,7 @@ pub const BROWSER_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) 
 fn detect_system_proxy() -> Option<String> {
     #[cfg(windows)]
     {
-        use winreg::enums::*;
+        use winreg::enums::{HKEY_CURRENT_USER, KEY_READ};
         use winreg::RegKey;
 
         let hkcu = RegKey::predef(HKEY_CURRENT_USER);

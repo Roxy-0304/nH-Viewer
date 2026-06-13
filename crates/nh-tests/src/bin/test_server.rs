@@ -1,3 +1,11 @@
+#![allow(
+    clippy::use_self,
+    clippy::missing_const_for_fn,
+    clippy::trait_duplication_in_bounds,
+    clippy::unwrap_used,
+    clippy::significant_drop_tightening
+)]
+
 //! Web-based API test server for nH-Viewer.
 //!
 //! Integrates nh-api, nh-storage, and nh-download for full backend testing.
