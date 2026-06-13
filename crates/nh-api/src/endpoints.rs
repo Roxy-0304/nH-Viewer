@@ -16,13 +16,13 @@ pub enum Sort {
 }
 
 impl Sort {
-    pub fn as_str(&self) -> &'static str {
+    pub const fn as_str(&self) -> &'static str {
         match self {
-            Sort::Date => "date",
-            Sort::Popular => "popular",
-            Sort::PopularToday => "popular-today",
-            Sort::PopularWeek => "popular-week",
-            Sort::PopularMonth => "popular-month",
+            Self::Date => "date",
+            Self::Popular => "popular",
+            Self::PopularToday => "popular-today",
+            Self::PopularWeek => "popular-week",
+            Self::PopularMonth => "popular-month",
         }
     }
 }
@@ -36,10 +36,10 @@ pub enum TagSort {
 }
 
 impl TagSort {
-    pub fn as_str(&self) -> &'static str {
+    pub const fn as_str(&self) -> &'static str {
         match self {
-            TagSort::Name => "name",
-            TagSort::Popular => "popular",
+            Self::Name => "name",
+            Self::Popular => "popular",
         }
     }
 }
@@ -54,11 +54,11 @@ pub enum DownloadFormat {
 }
 
 impl DownloadFormat {
-    pub fn as_str(&self) -> &'static str {
+    pub const fn as_str(&self) -> &'static str {
         match self {
-            DownloadFormat::Zip => "zip",
-            DownloadFormat::Cbz => "cbz",
-            DownloadFormat::Torrent => "torrent",
+            Self::Zip => "zip",
+            Self::Cbz => "cbz",
+            Self::Torrent => "torrent",
         }
     }
 }

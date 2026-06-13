@@ -276,11 +276,11 @@ pub enum ImageFileType {
 
 impl ImageFileType {
     /// Convert to the file extension string.
-    pub fn as_extension(&self) -> &'static str {
+    pub const fn as_extension(&self) -> &'static str {
         match self {
-            ImageFileType::Jpg => "jpg",
-            ImageFileType::Png => "png",
-            ImageFileType::Gif => "gif",
+            Self::Jpg => "jpg",
+            Self::Png => "png",
+            Self::Gif => "gif",
         }
     }
 }

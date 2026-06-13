@@ -8,26 +8,16 @@ members = [
 ]
 resolver = "2"
 
-# Workspace 级别 clippy lint 配置
 [workspace.lints.clippy]
-# 警告：常见的代码异味
 nursery = { level = "warn", priority = -1 }
-# 禁止使用 unwrap()，推荐使用 expect() 或 ? 操作符
 unwrap_used = "warn"
-# 禁止使用 panic!()，除非必要
 panic = "warn"
-# 警告：不必要的 clone
 clone_on_copy = "warn"
-# 警告：可以简化的代码
 redundant_closure_for_method_calls = "warn"
-# 警告：未使用的变量
-unused_variables = "warn"
-# 警告：未使用的导入
-unused_imports = "warn"
-# 警告：不必要的 return
 needless_return = "warn"
-# 警告：可以使用更具体的类型
 wildcard_imports = "warn"
 
 [workspace.lints.rust]
+unused_variables = "warn"
+unused_imports = "warn"
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }

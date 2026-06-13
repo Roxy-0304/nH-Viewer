@@ -114,7 +114,7 @@ impl Database {
     }
 
     /// Get a reference to the underlying connection pool.
-    pub fn pool(&self) -> &SqlitePool {
+    pub const fn pool(&self) -> &SqlitePool {
         &self.pool
     }
 }

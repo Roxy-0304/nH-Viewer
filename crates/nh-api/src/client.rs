@@ -80,20 +80,15 @@ fn detect_system_proxy() -> Option<String> {
 }
 
 /// Proxy mode for HTTP requests.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub enum ProxyMode {
     /// Do not use any proxy.
+    #[default]
     Disabled,
     /// Use system proxy (reads HTTP_PROXY / HTTPS_PROXY / ALL_PROXY env vars).
     System,
     /// Use a custom proxy URL (e.g. "http://127.0.0.1:7897", "socks5://...").
     Custom(String),
-}
-
-impl Default for ProxyMode {
-    fn default() -> Self {
-        ProxyMode::Disabled
-    }
 }
 
 impl ProxyMode {
@@ -102,8 +97,8 @@ impl ProxyMode {
     /// or `Err` if the proxy URL is invalid.
     pub fn to_reqwest_proxy(&self) -> crate::error::Result<Option<reqwest::Proxy>> {
         match self {
-            ProxyMode::Disabled => Ok(None),
-            ProxyMode::System => {
+            Self::Disabled => Ok(None),
+            Self::System => {
                 // Cross-platform system proxy detection:
                 // - Windows: reads registry Internet Settings (ProxyServer)
                 // - macOS/Linux/Android: reads HTTP_PROXY/HTTPS_PROXY/ALL_PROXY env vars
@@ -119,7 +114,7 @@ impl ProxyMode {
                     Ok(None)
                 }
             }
-            ProxyMode::Custom(url) => {
+            Self::Custom(url) => {
                 let proxy =
                     reqwest::Proxy::all(url).map_err(|e| crate::error::Error::CdnConfigFetch {
                         reason: format!("invalid proxy URL: {e}"),
@@ -179,25 +174,25 @@ impl ClientConfig {
     }
 
     /// Set the request timeout
-    pub fn timeout(mut self, timeout: Duration) -> Self {
+    pub const fn timeout(mut self, timeout: Duration) -> Self {
         self.timeout = timeout;
         self
     }
 
     /// Set the maximum number of retries
-    pub fn max_retries(mut self, max_retries: u32) -> Self {
+    pub const fn max_retries(mut self, max_retries: u32) -> Self {
         self.max_retries = max_retries;
         self
     }
 
     /// Set the base delay for exponential backoff
-    pub fn retry_delay(mut self, retry_delay: Duration) -> Self {
+    pub const fn retry_delay(mut self, retry_delay: Duration) -> Self {
         self.retry_delay = retry_delay;
         self
     }
 
     /// Enable or disable dynamic CDN configuration
-    pub fn dynamic_cdn(mut self, enable: bool) -> Self {
+    pub const fn dynamic_cdn(mut self, enable: bool) -> Self {
         self.enable_dynamic_cdn = enable;
         self
     }
@@ -215,7 +210,7 @@ impl ClientConfig {
     }
 
     /// Enable or disable cookie jar
-    pub fn cookies(mut self, enable: bool) -> Self {
+    pub const fn cookies(mut self, enable: bool) -> Self {
         self.cookie_store = enable;
         self
     }
@@ -387,7 +382,7 @@ impl NhClient {
     }
 
     /// Get the current proxy mode
-    pub fn proxy_mode(&self) -> &ProxyMode {
+    pub const fn proxy_mode(&self) -> &ProxyMode {
         &self.config.proxy_mode
     }
 
@@ -456,7 +451,7 @@ impl NhClient {
 
                             if attempt < self.config.max_retries {
                                 let delay = retry_after
-                                    .unwrap_or(self.config.retry_delay * 2u32.pow(attempt));
+                                    .unwrap_or_else(|| self.config.retry_delay * 2u32.pow(attempt));
                                 // Sleep for the 429 delay and skip the loop-top
                                 // backoff on the next iteration to avoid double sleep.
                                 tokio::time::sleep(delay).await;
@@ -577,8 +572,12 @@ impl GalleryEndpoints for NhClient {
         let result: serde_json::Value = response.json().await?;
         result
             .get("id")
-            .and_then(|v| v.as_u64())
-            .ok_or_else(|| Error::Json(serde_json::from_str::<serde_json::Value>("").unwrap_err()))
+            .and_then(serde_json::Value::as_u64)
+            .ok_or_else(|| {
+                Error::Json(
+                    serde_json::from_str::<serde_json::Value>("").expect_err("empty string is invalid JSON"),
+                )
+            })
     }
 
     async fn get_gallery(&self, id: u64, include: Option<&str>) -> Result<GalleryDetailResponse> {
@@ -642,7 +641,7 @@ impl GalleryEndpoints for NhClient {
     }
 
     async fn get_tags_by_ids(&self, ids: &[u64]) -> Result<Vec<TagResponse>> {
-        let ids_str: Vec<String> = ids.iter().map(|id| id.to_string()).collect();
+        let ids_str: Vec<String> = ids.iter().map(ToString::to_string).collect();
         let url = format!(
             "{}/api/v2/tags/ids?ids={}",
             self.config.base_url,

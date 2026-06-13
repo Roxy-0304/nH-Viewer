@@ -32,7 +32,7 @@ pub struct Settings {
     pub max_thumbnail_cache_size: u64,
 }
 
-fn default_max_thumbnail_cache() -> u64 {
+const fn default_max_thumbnail_cache() -> u64 {
     DEFAULT_MAX_THUMBNAIL_CACHE
 }
 
@@ -84,7 +84,7 @@ impl Settings {
     pub async fn load(path: &Path) -> Result<Option<Self>> {
         match fs::read_to_string(path).await {
             Ok(json) => {
-                let settings: Settings = serde_json::from_str(&json)?;
+                let settings: Self = serde_json::from_str(&json)?;
                 Ok(Some(settings))
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),

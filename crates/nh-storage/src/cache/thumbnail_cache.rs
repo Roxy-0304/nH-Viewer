@@ -44,7 +44,7 @@ impl ThumbnailCache {
     }
 
     /// Maximum cache size in bytes
-    pub fn max_size(&self) -> u64 {
+    pub const fn max_size(&self) -> u64 {
         self.max_size
     }
 

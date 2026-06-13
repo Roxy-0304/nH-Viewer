@@ -33,12 +33,12 @@ impl CacheManager {
     }
 
     /// Access the image (original quality) cache
-    pub fn images(&self) -> &ImageCache {
+    pub const fn images(&self) -> &ImageCache {
         &self.images
     }
 
     /// Access the thumbnail cache
-    pub fn thumbnails(&self) -> &ThumbnailCache {
+    pub const fn thumbnails(&self) -> &ThumbnailCache {
         &self.thumbnails
     }
 

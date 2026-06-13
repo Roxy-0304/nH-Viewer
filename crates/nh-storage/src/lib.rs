@@ -63,7 +63,7 @@ impl Storage {
 
         // Create cache manager
         let cache = CacheManager::new(
-            &settings.data_dir.join("cache"),
+            settings.data_dir.join("cache"),
             settings.max_thumbnail_cache_size,
         );
 
@@ -75,12 +75,12 @@ impl Storage {
     }
 
     /// Access the database
-    pub fn db(&self) -> &Database {
+    pub const fn db(&self) -> &Database {
         &self.db
     }
 
     /// Access the cache manager
-    pub fn cache(&self) -> &CacheManager {
+    pub const fn cache(&self) -> &CacheManager {
         &self.cache
     }
 
@@ -90,7 +90,7 @@ impl Storage {
     }
 
     /// Access the current settings
-    pub fn settings(&self) -> &Settings {
+    pub const fn settings(&self) -> &Settings {
         &self.settings
     }
 
