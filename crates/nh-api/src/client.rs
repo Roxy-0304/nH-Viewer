@@ -575,7 +575,8 @@ impl GalleryEndpoints for NhClient {
             .and_then(serde_json::Value::as_u64)
             .ok_or_else(|| {
                 Error::Json(
-                    serde_json::from_str::<serde_json::Value>("").expect_err("empty string is invalid JSON"),
+                    serde_json::from_str::<serde_json::Value>("")
+                        .expect_err("empty string is invalid JSON"),
                 )
             })
     }
