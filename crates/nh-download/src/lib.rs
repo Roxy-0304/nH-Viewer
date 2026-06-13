@@ -18,7 +18,7 @@
 //! use nh_download::queue::Priority;
 //!
 //! #[tokio::main]
-//! async fn main() -> nh_download::error::Result<()> {
+//! async fn main() -> anyhow::Result<()> {
 //!     let api_client = nh_api::NhClient::with_api_key(None).await?;
 //!     let settings = nh_storage::settings::Settings::default_for_platform()?;
 //!     let storage = nh_storage::Storage::init(settings).await?;
